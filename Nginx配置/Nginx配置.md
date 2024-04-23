@@ -116,6 +116,13 @@ server {
     listen 443 ssl http2;
     server_name *.xxx.com;
 
+	# 跨域配置
+	add_header 'Access-Control-Allow-Origin' '*';
+	add_header 'Access-Control-Allow-Headers' '*';
+	add_header 'Access-Control-Allow-Methods' '*';
+	add_header 'Access-Control-Allow-Credentials' 'true';
+
+	# ssl配置
     ssl_certificate     /usr/local/nginx/cert/*.xxx/*.xxx.com.cer;  #还有可能是.pem文件
     ssl_certificate_key /usr/local/nginx/cert/*.xxx/*.xxx.com.key;  # 这里建议写绝对路径，保证不出错
     # 如果你有中间证书，可以使用 ssl_certificate_chain 指令
@@ -144,6 +151,7 @@ server {
         proxy_pass http://server_list;  # 转发到后端的服务器处理
     }
 
+	# 文件白名单
 	location /upload {
         # 设置允许上传的文件大小限制
         client_max_body_size 10M;
