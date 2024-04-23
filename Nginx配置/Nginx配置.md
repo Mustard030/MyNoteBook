@@ -143,6 +143,27 @@ server {
 	    
         proxy_pass http://server_list;  # 转发到后端的服务器处理
     }
+
+	location /upload {
+        # 设置允许上传的文件大小限制
+        client_max_body_size 10M;
+ 
+        # 检查文件后缀
+        if ($http_upgrade ~* "multipart/form-data"){
+            set $is_upload 0;
+            # 设置白名单的文件后缀
+            if ($request_uri ~* "\.jpg$|\.jpeg$|\.png$|\.gif$"){
+                set $is_upload 1;
+            }
+            # 如果不在白名单内，返回403禁止访问
+            if ($is_upload = 0) {
+                return 403;
+            }
+        }
+ 
+        # 上传文件的处理逻辑（例如传递给后端应用）
+        # proxy_pass http://backend/upload;
+    }
     
     location ~* /.svn/ {
         deny all;
