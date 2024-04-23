@@ -158,8 +158,8 @@ server {
         proxy_pass http://server_list;  # 转发到后端的服务器处理
     }
 
-	# 文件白名单
-	location /upload {
+    # 文件白名单
+    location /upload {
         # 设置允许上传的文件大小限制
         client_max_body_size 10M;
  
