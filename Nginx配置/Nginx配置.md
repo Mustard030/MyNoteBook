@@ -90,12 +90,12 @@ server{
 	listen 80;
 	
 	# 访问域名
-    server_name *.xxx.com;
+        server_name *.xxx.com;
     
-    return 301 https://$http_host$request_uri;
+        return 301 https://$http_host$request_uri;
 	
 	# 日志文件的存放路径
-    access_log  logs/xxx.com.access.log;
+        access_log  logs/xxx.com.access.log;
 	error_log   logs/xxx.com.error.log;
 	
 	error_page  403 /403.html;
@@ -116,24 +116,25 @@ server {
     listen 443 ssl http2;
     server_name *.xxx.com;
 
-	# 跨域配置
-	add_header 'Access-Control-Allow-Origin' '*';
-	add_header 'Access-Control-Allow-Headers' '*';
-	add_header 'Access-Control-Allow-Methods' '*';
-	add_header 'Access-Control-Allow-Credentials' 'true';
+    # 跨域配置
+    add_header 'Access-Control-Allow-Origin' '*';
+    add_header 'Access-Control-Allow-Headers' '*';
+    add_header 'Access-Control-Allow-Methods' '*';
+    add_header 'Access-Control-Allow-Credentials' 'true';
 
-	# 防盗链设置
-	valid_referers *.xxx.com;
-	if ($invalid_referer) {
-		return 404;
-	}
+    # 防盗链设置
+    valid_referers *.xxx.com;
+    if ($invalid_referer) {
+        return 404;
+    }
 
-	# ssl配置
+    # ssl配置
     ssl_certificate     /usr/local/nginx/cert/*.xxx/*.xxx.com.cer;  #还有可能是.pem文件
     ssl_certificate_key /usr/local/nginx/cert/*.xxx/*.xxx.com.key;  # 这里建议写绝对路径，保证不出错
     # 如果你有中间证书，可以使用 ssl_certificate_chain 指令
     ssl_certificate_chain /path/to/chain_of_certificates.pem; # 中间证书
 
+    ssl_session_cache shared:SSL:1m;
     ssl_session_timeout 5m;
     ssl_protocols TLSV1 TLSv1.1 TLSv1.2;
     ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE:ECDH:AES:HIGH:!NULL:!aNULL:!MD5:!ADH:!RC4;
