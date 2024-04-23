@@ -122,6 +122,12 @@ server {
 	add_header 'Access-Control-Allow-Methods' '*';
 	add_header 'Access-Control-Allow-Credentials' 'true';
 
+	# 防盗链设置
+	valid_referers *.xxx.com;
+	if ($invalid_referer) {
+		return 404;
+	}
+
 	# ssl配置
     ssl_certificate     /usr/local/nginx/cert/*.xxx/*.xxx.com.cer;  #还有可能是.pem文件
     ssl_certificate_key /usr/local/nginx/cert/*.xxx/*.xxx.com.key;  # 这里建议写绝对路径，保证不出错
