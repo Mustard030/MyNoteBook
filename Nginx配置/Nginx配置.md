@@ -118,6 +118,9 @@ server {
 
     ssl_certificate     /usr/local/nginx/cert/*.xxx/*.xxx.com.cer;  #还有可能是.pem文件
     ssl_certificate_key /usr/local/nginx/cert/*.xxx/*.xxx.com.key;  # 这里建议写绝对路径，保证不出错
+    # 如果你有中间证书，可以使用 ssl_certificate_chain 指令
+    ssl_certificate_chain /path/to/chain_of_certificates.pem; # 中间证书
+
     ssl_session_timeout 5m;
     ssl_protocols TLSV1 TLSv1.1 TLSv1.2;
     ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE:ECDH:AES:HIGH:!NULL:!aNULL:!MD5:!ADH:!RC4;
