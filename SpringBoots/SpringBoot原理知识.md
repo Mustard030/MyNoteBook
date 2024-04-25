@@ -19,7 +19,9 @@ Bean是作用在有`@Configuration`注解的类的**方法**上的，它允许�
 
 ### @Autowired, @Resource, @Qualifier
 `@Autowired`可以标注在构造器，方法，参数，成员变量，注解上，先ByType再ByName
+
 `@Qualifier`可以指定要注入的bean的名字，`@Autowired`和`@Qualifier`一起使用等于`@Resource(name="xxx")`
+
 `@Resource`是先ByName再ByType
 - 成员变量：此时先根据你的类型找到所有这个类型的Bean（ByType），如果只有一个这个类型的Bean则直接赋值，否则根据变量名（ByName）找到对应名字的Bean
 - 任意非static方法：根据入参的信息找到一个Bean赋值
