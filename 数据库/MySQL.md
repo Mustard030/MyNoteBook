@@ -936,7 +936,7 @@ select * from orders where create_at = CURDate() and company_name like '%腾讯%
 
 方法二：
 
-根据[[#索引失效情况]]可以知道，例如`LIKE "%name"`或者`LIKE "%name%"`，这种查询会导致索引失效而进行全表扫描。但是可以使用`LIKE "name%"`。那如果真的需要查询`LIKE "%name%"`，应该使用全文索引
+根据[索引失效情况](#索引失效情况)可以知道，例如`LIKE "%name"`或者`LIKE "%name%"`，这种查询会导致索引失效而进行全表扫描。但是可以使用`LIKE "name%"`。那如果真的需要查询`LIKE "%name%"`，应该使用全文索引
 ```sql
 ALTER TABLE 表名 ADD FULLTEXT INDEX `idx_name`(`name`);
 
