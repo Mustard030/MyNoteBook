@@ -921,6 +921,21 @@ between和>= <=并没有区别，==在数据量少的时候都会走索引（筛
 
 
 ### like优化
+方法一：
+
+假如此时有查询语句为：`select * from orders where company_name like '%腾讯%';`，此时单索引`idx_company_name`是不会生效的，但是可以通过索引下推的方式来变相使用索引：
+
+```sql
+-- 比如现在查询条件不止有company_name，那么可以建立另一个字段和company_name的联合索引
+create index idx_crate_at_company_name on orders(create_at, company_name);
+select * from orders where create_at = CURDate() and company_name like '%腾讯%';
+-- 这样就能走这个联合索引了
+```
+如果在实际情况中，没办法通过索引下推进行优化，可以考虑使用方法二
+
+
+方法二：
+
 根据[[#索引失效情况]]可以知道，例如`LIKE "%name"`或者`LIKE "%name%"`，这种查询会导致索引失效而进行全表扫描。但是可以使用`LIKE "name%"`。那如果真的需要查询`LIKE "%name%"`，应该使用全文索引
 ```sql
 ALTER TABLE 表名 ADD FULLTEXT INDEX `idx_name`(`name`);
