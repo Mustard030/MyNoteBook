@@ -7,7 +7,14 @@
 - 关键方法在执行后的扩展行为，例如记录日志、启动其他任务等
 
 依赖：
-```xml
+```xml        
+<!-- 直接用这个就行，aop包含了下面的aspectjweaver -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-aop</artifactId>
+</dependency>
+
+<!-- 可以不直接用这个 -->
 <dependency>  
     <groupId>org.aspectj</groupId>  
     <artifactId>aspectjweaver</artifactId>  
