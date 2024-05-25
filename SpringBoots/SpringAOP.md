@@ -80,9 +80,14 @@ public class MethodExportAspect {
 ```
 
 
+
+
+
+
 # 场景二：使用AOP实现内部调用而无需AopContext.currentProxy()                          
 **应用场景：**
-比如有个`@Service`类，里面有个A方法，调用了带有`@Transactional`注解的B方法，那么你在调用A方法，执行到B方法的时候是没有事务关联的。因为A调用B的时候，并不是通过代理类，而事务相关逻辑是放在代理类的。一般情况下，使用`AopContext.currentProxy()`方法来获取到当前类的代理对象，调用代理对象的B方法，也是可以完成事务的
+比如有个`@Service`类，里面有个A方法，调用了带有`@Transactional`注解的B方法，那么你在调用A方法，执行到B方法的时候是没有事务关联的。因为A调用B的时候，并不是通过代理类，而事务相关逻辑是放在代理类的。一般情况下，使用`AopContext.currentProxy()`方法来获取到当前类的代理对象，调用代理对象的B方法，也是可以完成事务的，但是有更简洁优雅的方式。
+
 
 第一步：引入依赖（同上）
 第二步：开启AspectJ支持 
