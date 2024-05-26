@@ -17,8 +17,12 @@ Bean是作用在有`@Configuration`注解的类的**方法**上的，它允许�
 @Lazy只针对单例Bean，在第一次使用才加载到容器中
 
 
-### @Autowired
-可以标注在构造器，方法，参数，成员变量，注解上，先ByType再ByName
+### @Autowired, @Resource, @Qualifier
+`@Autowired`可以标注在构造器，方法，参数，成员变量，注解上，先ByType再ByName
+
+`@Qualifier`可以指定要注入的bean的名字，`@Autowired`和`@Qualifier`一起使用等于`@Resource(name="xxx")`
+
+`@Resource`是先ByName再ByType
 - 成员变量：此时先根据你的类型找到所有这个类型的Bean（ByType），如果只有一个这个类型的Bean则直接赋值，否则根据变量名（ByName）找到对应名字的Bean
 - 任意非static方法：根据入参的信息找到一个Bean赋值
 - 构造方法：有多个构造方式时，构造Bean的时候会尝试使用无参构造方法，如果没有无参构造方法则报错，除非在其中一个构造方法上加上`@Autowired`，只有一个构造方法时就用那个
@@ -208,6 +212,18 @@ Bean的创建和销毁方法有4种定义方法：
 在切面类上加`@Aspect`表明这是切面类，再加上`@Component`注册到容器，并在配置类中加入`@EnableAspectJAutoProxy`开启基于注解的aop模式
 
 核心在于`@EnableAspectJAutoProxy`这个注解，它导入了`@Import({AspectJAutoProxyRegistrar.class})`，利用`AspectJAutoProxyRegistrar`自定义给容器中注册Bean
+
+**AOP失效情况：**
+AOP代理通常在方法调用的外部进行拦截和增强，但对于同一个类内部的方法调用，由于绕过了代理对象，AOP增强可能会失效。为了解决这个问题，可以使用AopContext.currentProxy()方法来获取当前对象的AOP代理。AopContext.currentProxy()方法是Spring提供的一个静态方法，用于获取当前线程中正在执行的方法所属的代理对象。通过这个方法，可以在同一个类的方法中调用另一个方法，并确保AOP增强仍然生效。
+
+```java
+	//在使用本类方法时，不能直接调用
+	UserService proxyUserServiceImpl = (UserService) AopContext.currentProxy();
+	//然后再通过proxyUserServiceImpl调用本类其他方法
+	proxyUserServiceImpl.saveUser(user);
+```
+
+在Springboot2.7以前，可以通过本类注入本类来使用本类中被增强的另一个方法，但在2.7版本后本类循环依赖会直接报错，建议直接使用上述方法。AopContext.currentProxy()的实现原理为ThreadLocal。
 
 
 # SpringIOC容器的创建
