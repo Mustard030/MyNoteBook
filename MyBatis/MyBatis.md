@@ -164,29 +164,6 @@ public class TestMyBatis {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # MyBaits Plus
 [官网](https://baomidou.com/)
 
@@ -258,6 +235,9 @@ public interface UserService extends IService<User> { //除了继承模版，我
 @Service //需要继承ServiceImpl才能实现那些默认的CRUD方法 
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService { }
 ```
+
+## 分页组件
+
 
 
 ## **代码生成器**

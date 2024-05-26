@@ -6,6 +6,7 @@
       {
         "id": "cd88b524cc20c705",
         "type": "tabs",
+        "dimension": 82.48081841432226,
         "children": [
           {
             "id": "567a16eba6e140de",
@@ -13,12 +14,31 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "数据库/MySQL.md",
+                "file": "SpringBoots/TraceID.md",
                 "mode": "source",
                 "backlinks": false,
                 "source": false
               }
-            }
+            },
+            "group": "6668fcd9ba0b1f62"
+          }
+        ]
+      },
+      {
+        "id": "fd63a3f7789d2565",
+        "type": "tabs",
+        "dimension": 17.51918158567775,
+        "children": [
+          {
+            "id": "bdc2e51949af19a6",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "SpringBoots/TraceID.md"
+              }
+            },
+            "group": "6668fcd9ba0b1f62"
           }
         ]
       }
@@ -86,7 +106,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "数据库/MySQL.md",
+                "file": "SpringBoots/TraceID.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -103,7 +123,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "数据库/MySQL.md",
+                "file": "SpringBoots/TraceID.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               }
@@ -126,7 +146,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "数据库/MySQL.md"
+                "file": "SpringBoots/TraceID.md"
               }
             }
           }
@@ -153,20 +173,24 @@
   },
   "active": "567a16eba6e140de",
   "lastOpenFiles": [
+    "SpringBoots/ThreadLocal.md",
+    "SpringBoots/大文件上传.md",
+    "SpringBoots/参数校验.md",
+    "SpringBoots/TraceID.md",
+    "MyBatis/MyBatis.md",
+    "MyBatis/基于MyBatis实现通用的字段级数据加解密.md",
     "数据库/Redis.md",
+    "数据库/MySQL.md",
     "数据库/Redis/Pasted image 20240223141923.png",
     "数据库/Redis.assets/Pasted image 20240223141923.png",
     "数据库/Redis.assets",
     "数据库/Redis",
-    "数据库/MySQL.md",
     "Nginx配置/Nginx配置.md",
     "SpringAlibaba/OAuth2.md",
     "其他知识/设计模式.md",
     "其他知识/接口幂等性处理.md",
     "其他知识/服务器高资源占用标准处理流程.md",
-    "MyBatis/MyBatis.md",
     "MyBatis",
-    "MyBatis/基于MyBatis实现通用的字段级数据加解密.md",
     "其他知识/分布式序列算法.md",
     "Jenkins/Jenkins基础.md",
     "其他知识/JVM.md",
@@ -180,9 +204,6 @@
     "中间件/消息队列.md",
     "SpringBoots/SpringMVC.md",
     "SpringBoots/切换运行环境.md",
-    "SpringBoots/参数校验.md",
-    "SpringAlibaba/Dubbo.md",
-    "SpringCloud/OpenFeign.md",
     "其他知识/Pasted image 20240319134443.png",
     "其他知识/Pasted image 20240319134426.png",
     "其他知识/Pasted image 20240319133630.png",
