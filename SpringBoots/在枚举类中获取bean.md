@@ -81,6 +81,7 @@ public enum InterfaceEnum {
     @Setter
     private InterfaceSth interfaceImpl;
 
+    @Component
     public static class EnumTypeServiceInjector {
         @Resource private InterfaceSth xxxImpl;  //注入实现类bean
         @Resource private InterfaceSth yyyImpl;  //注入实现类bean
