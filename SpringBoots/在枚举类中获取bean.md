@@ -103,6 +103,13 @@ public enum InterfaceEnum {
 ```
 
 
+例如入参`params`为：
+```json    
+{
+    "interface_method": "XXX",
+    ...      
+}
+```
 
 使用时：
 
