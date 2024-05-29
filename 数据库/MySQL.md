@@ -889,10 +889,21 @@ select age, count(*) from xxx group by age;-- Using index;Using temporary;用到
 ```mysql
 select s.* from tb_sku s, (select id from tb_sku order by id limit 9000000,10) a where s.id = a.id;
 ```
-id偏移量优化方案：找到limit第一个参数对应的主键值，再根据这个主键值去过滤并limit
+id偏移量优化方案：找到limit第一个参数对应的主键值，再根据这个主键值去过滤并limit，这个方案需要先分析表中数据存储升序降序规律
 ```sql
-select * from table where id > 
-	(select * from table where type=2 and level=9 order by id asc limit 190)
+select *
+from table
+where id > (
+	select * from table where type=2 and level=9 order by id asc limit 190
+)
+
+-- 或者
+
+select *  
+from table
+where id < 12345 and score <=  100	-- 第一次时先设置预测最大值，前端需要把每次当前页最大值返回来替换这里的条件   
+order by score desc
+limit 20; -- 每页大小              
 ```
 
 
