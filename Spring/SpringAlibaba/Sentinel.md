@@ -139,7 +139,7 @@ String findUserBorrows2(@RequestParam(value = "a", required = false) String a,
 ```
 然后在Sentinel里进行热点配置，这里参数`a`的索引为0
 在携带参数`a`时，当访问频率超过设定值，就会被限流，这里是直接在后台抛出异常，当不携带参数`a`或者携带其他参数就不会出现限流
-除了直接对某个参数精准限流外，还可以对参数携带的指定值单独设定阈值，比如现在不仅希望对参数`a`限流，而且还希望当参数`a`的值为10时，QPS达到5再进行限流，那么就可以设定例外：![[./Pasted image 20240212172939.png]]
+除了直接对某个参数精准限流外，还可以对参数携带的指定值单独设定阈值，比如现在不仅希望对参数`a`限流，而且还希望当参数`a`的值为10时，QPS达到5再进行限流，那么就可以设定例外：![[Pasted image 20240212172939.png]]
 
 
 
@@ -169,7 +169,7 @@ UserBorrowDetail findUserBorrows2(@PathVariable("uid") int uid) { throw new Runt
 UserBorrowDetail test(int uid, BlockException e){ return new UserBorrowDetail(new User(), Collections.emptyList()); }
 ```
 接着对进行熔断配置，注意是对添加的`@SentinelResource`中指定名称的`findUserBorrows2`进行配置
-![[./Pasted image 20240212214123.png]]
+![[Pasted image 20240212214123.png]]
 
 让Frign也支持Sentinel需要在配置文件中开启
 ```yml title:application.yml
@@ -178,7 +178,7 @@ feign:
 		enable: true
 ```
 
-之后的步骤和[[../SpringCloud/OpenFeign|OpenFeign]]中的一模一样，也是创建一个实现类
+之后的步骤和[[OpenFeign|OpenFeign]]中的一模一样，也是创建一个实现类
 
 如果用的传统的RestTemplate可以用`@SentinelRestTemplate`注解实现
 ```java title:config/RestTemplateConfiguration.java
