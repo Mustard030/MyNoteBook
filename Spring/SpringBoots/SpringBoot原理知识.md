@@ -41,6 +41,17 @@ private Map<String, IUser> userMap;
 
 ```
 
+### @Order、@DependsOn
+`@Order`用于改变Bean**注入**的顺序（并**不改变**Bean的**创建**顺序），假如此时需要注入一个`List<I> i`，并且扫描出了A、B两个类都实现了I接口，那么正常情况下会先注入A再注入B，但是如果加了`@Order(n)`注解，就会改变注入顺序n越小越在前。
+例子：SpringMVC的拦截器，可以通过`@Order`改变注入顺序，决定了哪个拦截器在前面，还有MyBatis插件也是同理
+
+`@DependsOn`**改变**Bean的**创建**顺序，假如有A、B两个类，正常情况下先创建A再创建B，此时在A上加上注解`@DependsOn("b")`，包扫描到A的时候，检测到这个注解，就会先创建B再回来继续创建A，这里可以是一个列表`@DependsOn({"b", "c", "d"})`，但这个功能也不一定需要用注解来实现，比如说在A的构造函数上加上B类作为参数，就会达到这种效果
+```java
+public class A {
+	public A(B b){}
+}
+```
+
 ### @Controller、@Service、@Repository、@Component
 本质都是`@Component`注解不过是语义上的不同，默认注册的Bean名称为类名首字母小写
 
