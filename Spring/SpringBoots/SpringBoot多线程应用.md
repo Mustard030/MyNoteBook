@@ -123,3 +123,32 @@ public class AsyncController {
 
 
 
+## 异步任务也可以返回结果
+**Service：**
+```java
+@Service
+public class AsyncService {
+	@Async
+	public Future<String> executeAsyncTask() {
+		try {
+			// 模拟长时间运行的任务
+			Thread.sleep(1000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		return new AsyncResult<>("任务执行完成");
+	}
+}
+```
+
+**调用：**
+```java
+@Autowired
+private AsyncService asyncService;
+
+@GetMapping("/async")
+public String startAsyncTask() throws ExecutionException, InterruptedException {
+	Future<String> future = asyncService.executeAsyncTask();
+	return future.get(); // 这里会阻塞并等待异步方法执行完成
+}
+```
