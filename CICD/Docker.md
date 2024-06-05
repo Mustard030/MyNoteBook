@@ -159,7 +159,17 @@ $ sudo rm -rf /var/lib/docker
 **阿里云镜像加速**
 
 登陆阿里云找到[容器服务](https://cr.console.aliyun.com/cn-hangzhou/instances/mirrors)，按提示操作即可
+```bash
+vim /etc/docker/daemon.json
+{
+	"registry-mirrors": ["https://jbw52uwf.mirror.aliyuncs.com"],
+	"exec-opts": ["native.cgroupdriver=systemd"]
+}
 
+
+#重启docker
+systemctl restart docker && systemctl enable docker
+```
 
 
 
