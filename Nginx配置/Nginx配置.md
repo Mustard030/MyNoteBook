@@ -88,6 +88,8 @@ server{
 
 	# 监听端口
 	listen 80;
+	# 如果要同时开放80端口的http和https配置，可以都写上，并配上default_server
+	listen 80 ssl default_server; #这样http和https的80都能访问了
 	
 	# 访问域名
         server_name *.xxx.com;
