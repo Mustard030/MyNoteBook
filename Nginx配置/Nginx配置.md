@@ -83,13 +83,19 @@ http {
 例如 xxx.com.conf
 
 ```
+#负载均衡用的
+upstream server_list{
+	server localhost:8080;
+	server localhost:8090;
+}
+
 # 用于把80的请求都转到443 https
 server{
 
 	# 监听端口
 	listen 80;
-	# 如果要同时开放80端口的http和https配置，可以都写上，并配上default_server
-	listen 80 ssl default_server; #这样http和https的80都能访问了
+	# 如果要同时开放某个端口的http和https配置，可以都写上，并配上default_server，下面记得有ssl相关的配置
+    	# listen 80 ssl default_server; #这样http和https的80都能访问了
 	
 	# 访问域名
         server_name *.xxx.com;
@@ -108,14 +114,9 @@ server{
 	# rewrite ^(.*)$ /maintainace.html break;
 }
 
-#负载均衡用的
-upstream server_list{
-	server localhost:8080;
-	server localhost:8090;
-}
-
 server {
     listen 443 ssl http2;
+
     server_name *.xxx.com;
 
     # 跨域配置
