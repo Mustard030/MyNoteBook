@@ -152,3 +152,45 @@ public String startAsyncTask() throws ExecutionException, InterruptedException {
 	return future.get(); // 这里会阻塞并等待异步方法执行完成
 }
 ```
+
+
+# 如何确定一个Bean是不是线程安全的
+主要看Bean中有没有储存状态
+例如：
+```java
+public class PayService {
+	private PayType payType; //如果有这样一个状态属性
+	...
+	public void pay(Long amount){...}
+}
+
+//使用时先payService.setPayType(xxx)
+```
+如果有储存状态，那就是不安全的，因为在多线程情况下会被重复set，还没调用pay方法，PayType就被改变了。
+
+解决方法：
+一、直接将PayType作为参数传进pay方法里，不保存到类属性中
+```java
+public void pay(Long amount, PayType paytype){...}
+```
+
+二、如果必须得有这么一个成员变量，利用ThreadLocal保存PayType，可保证线程安全
+```java
+public class PayService {
+	private ThreadLocal<PayType> payTypeThreadLocal = new ThreadLocal<>();
+	
+	public void setPayType(PayType payType){
+		payTypeThreadLocal.set(payType)
+	}
+	
+	public PayType getPayType(){
+		return payTypeThreadLocal.get()
+	}
+	...
+	public void pay(Long amount){
+		...
+		//在处理逻辑最后清除ThreadLocal否则线程复用时可能引发错误
+		payTypeThreadLocal.remove()
+	}
+}
+```
