@@ -74,12 +74,60 @@ kubectl get deployment
 
 #删除deployment
 kubectl delete deployment <dep-name>
+
+#修改
+kubectl edit deploy <dep-name>
+```
+### 滚动升级与回滚
+```bash
+#以tomcat为例
+kubectl set image deployment <dep-name> tomcat=tomcat:10.1.11 --record
+
+#回滚
+#查看历史回滚版本
+kubectl rollout history deploy <dep-name>
+#回滚命令
+kubectl rollout undo deployment/my-dep [--to-revision=2] #不加默认到上一个，加了可以指定到某一个版本
 ```
 
 
-
 ## Service
+将一组pod暴露给外部访问，但Service一般是东西方向流量沟通用的，比如会员服务与购物服务沟通，要暴露给真正的公网访问即南北方向流量，一般用Ingress
+Service Spec标记type的方式暴露，type类型如下：
+- ClusterIP（默认）：在集群的内部IP上公开Service，这种类型使得Service只能从集群内访问
+- NodePort：使用NAT在集群中每个选定Node的相同端口上公开Service，使用\<NodeIP\>:\<NodePort\>从集群外部访问Service，是ClusterIP的超集
+- LoadBalancer：在当前云中创建一个外部负载均衡器（如果支持），并为Service分配一个固定的外部IP，是NodePort的超集
+- ExternalName：通过返回带有该名称的CNAME记录，使用任意名称（由spec中的externalName指定）公开Service，不使用代理
 
+```bash
+kubectl expose deployment <dep-name> --name=<svc-name> --port=8080 --type=NodePort
+
+#查看Service信息，port信息里冒号后面的端口号就是对集群外暴露的访问接口
+kubectl get svc
+```
+```yaml
+apiVersion: v1  
+kind: Service  
+metadata:  
+  name: my-tomcat  
+  namespace: your-ns  
+  labels:  
+    app: my-tomcat
+spec:  
+  type: NodePort  
+  ports:  
+    - port: 9000  #srvice的虚拟ip对应的端口，在集群内网机器可以访问用Service的虚拟ip加该端口号访问服务
+      targetPort: 9000  #pod暴露的端口，一般与pod内部容器暴露的端口一致
+      protocol: TCP  
+      name: http  
+      nodePort: 30777  #Service在宿主机上映射的外网访问的端口，端口范围必须在30000-32767之间
+  selector:  
+    app: my-tomcat  
+```
+
+
+## Volume
+存储卷，包含可被pod中容器访问的数据目录，容器中的文件在磁盘中是临时存放的，当容器崩溃时文件会丢失，同时无法在多个pod上共享文件，使用Volume解决这个问题
 
 
 
