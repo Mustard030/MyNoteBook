@@ -152,6 +152,13 @@ sed -ri 's/.*swap.*/#&/' /etc/fstab
 systemctl reboot #重启生效
 free -m #查看swap交换区是否为0，都为0则成功
 
+#允许IP层数据包转发
+cat >> /etc/sysctl.conf <<-'EOF'
+net.ipv4.ip_forward=1
+EOF
+sysctl -p
+
+
 #分别给机器加上主机名
 hostnamectl set-hostname xxx #如k8s-master
 

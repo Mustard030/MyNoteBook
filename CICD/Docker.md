@@ -55,7 +55,7 @@ sudo yum remove docker \
 2、通过仓库安装
 
 ```shell
-sudo yum install -y yum-utils
+sudo yum install -y yum-utils device-mapper-persistent-data lvm2
 ```
 
 3、设置镜像仓库
@@ -162,7 +162,7 @@ $ sudo rm -rf /var/lib/docker
 ```bash
 vim /etc/docker/daemon.json
 {
-	"registry-mirrors": ["https://jbw52uwf.mirror.aliyuncs.com"],
+	"registry-mirrors": ["https://xxxxxxx.mirror.aliyuncs.com"],
 	"exec-opts": ["native.cgroupdriver=systemd"]
 }
 
