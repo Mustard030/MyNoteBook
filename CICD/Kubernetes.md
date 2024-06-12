@@ -128,11 +128,263 @@ spec:
 
 ## Volume
 存储卷，包含可被pod中容器访问的数据目录，容器中的文件在磁盘中是临时存放的，当容器崩溃时文件会丢失，同时无法在多个pod上共享文件，使用Volume解决这个问题
+常用的卷类型有：**configMap**、**emptyDir**、**local**、**nfs**、**secret**等
+
+- ConfigMap：可以将配置文件以键值对的形式保存到ConfigMap中，并且可以在Pod中以文件或者环境变量的形式使用。ConfigMap可以用来存储不敏感的配置信息，如应用程序的配置文件。
+- EmptyDir：是一个空目录，可以在Pod中用来存储临时数据，当Pod被删除时一并删除
+- Local：将本地文件系统的目录或文件映射到Pod中的一个Volume中，可以用来在Pod中共享文件或数据。
+- NFS：将网络上的一个或多个NFS共享目录挂载到Pod的Volume中，可以用来在多个Pod中共享数据
+- Secret：将敏感信息以密文的形式保存到Secret中，并且可以在Pod中以文件或环境变量的形式使用。Secret可以用来保存敏感信息，如用户名密码、证书等。
+### 使用方式
+在`.spec.volumes`字段中设置为Pod提供的卷，并在`.spec.containers[*].volumeMounts`字段中声明卷在容器中挂载的位置。容器中的进程看到的文件系统视图是由他们的容器镜像的初始内容以及挂载在容器中的卷（如果定义了）所组成。其中根文件系统间容器镜像的内容相吻合。任何在该文件系统下的写入操作，如果被允许的话，都会影响接下来容器中进程访问文件系统时所看到的内容。
+
+#### 搭建nfs文件系统
+安装：
+```bash
+#在每个机器上
+yum install -y nfs-utils
+
+#在master执行
+echo "/nfs/data *(insecure,rw,sync,no_root_squash)" > /etc/exports
+mkdir -p /nfs/data
+systemctl enable rpcbind
+systemctl enable nfs-server
+systemctl start rpcbind
+systemctl start nfs-server
+exportfs -r
+exportfs
+```
+配置文件：
+```yaml
+apiVersion: v1
+kind: Deployment
+metadata:
+	labels:
+		app: nginx-pv-demo
+	name: nginx-pv-demo
+spec:
+	replicas: 2
+	selector:
+		matchLabels:
+			app: nginx-pv-demo
+	template:
+		metadata:
+			labels:
+				app: nginx-pv-demo
+		spec:
+			containers:
+			- name: nginx
+			  image: nginx
+			  volumeMounts:
+				  - name: html
+					mountPath: /usr/share/nginx/html #容器内部
+			volumes:
+				- name: html
+				  nfs:
+					  server: x.x.x.x(masterIPAddress)
+					  path: /nfs/data/nginx-pv #nfs服务器中的地址必须先存在，否则pod会创建失败
+```
+缺陷：
+
+1. nfs服务器中的地址必须先存在，否则pod会创建失败
+2. 必须知道master的地址
+
+
+
+#### PV&PVC
+
+主要在于声明一个pv，使用时为pvc，实现解耦，不需要知道master的ip，也不需要创建文件夹，直接使用声明的pv即可。但是这两种方式都是静态的，即管理员需要提前分配好以上的区域，才可以使用。缺点是资源不能充分利用。
+
+
+
+### 动态供应
+
+即如果没有满足pvc条件的pv，会动态创建pv。相比静态供应，动态供应有明显的优势：不需要提前创建pv，减少了管理员的工作量，效率高。动态供应是通过StorageClass实现的，StorageClass定义了如何创建pv，但需要注意的是每个StorageClass都有一个制备器（Provisioner）用来决定使用哪个卷插件制备pv，该字段必须指定才能实现动态创建
+
+配置动态供应的默认存储类
+
+```yaml
+# 创建了一个存储类
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-storage
+  annotations:
+      storageclass.kubernetes.io/is-default-class: "true"
+provisioner: k8s-sigs.io/nfs-subdir-external-provisioner
+parameters:
+    archiveOnDelete: "true" #删除pv的时候，pv内容是否需要备份
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: nfs-client-provisioner
+    labels:
+        app: nfs-client-provisioner
+    namespace: default
+spec:
+    replicas: 1
+    strategy:
+        type: Recreate
+    selector:
+        matchLabels:
+            app: nfs-client-provisioner
+    template:
+        metadata:
+            labels:
+                app: nfs-client-provisioner
+        spec:
+            serviceAccountName: nfs-client-provisioner
+            containers:
+                - name: nfs-client-provisioner
+                  image: registry.cn-hangzhou.aliyuncs.com/k8s_images/nfs-subdir-external-provisioner:v4.0.2
+                  volumeMounts:
+                      - name: nfs-client-root
+                        mountPath: /persistentvolumes
+                  env:
+                      - name: PROVISIONER_NAME
+                        value: k8s-sigs.io/nfs-subdir-external-provisioner
+                      - name: NFS_SERVER
+                        value: 192.168.1.100 #指定自己nfs服务器地址
+                      - name: NFS_PATH
+                        value: /nfs/data #指定nfs服务器上的共享目录
+
+            volumes:
+                - name: nfs-client-root
+                  nfs:
+                      server: 192.168.1.100 #指定自己nfs服务器地址
+                      path: /nfs/data
+```
+
+
+
+## ConfigMap
+
+是一种存储非敏感信息的Kubernetes对象，用于存储配置数据如键值对，整个配置文件，或者JSON数据等，通常用于容器镜像中的配置文件，命令行参数和环境变量等。ConfigMap通常用于容器镜像中的配置文件、命令行、环境变量等
+
+1. 环境变量注入：将配置数据注入到Pod的容器环境变量中
+2. 配置文件注入：将配置数据注入到Pod的容器文件系统中，容器可以读取这些文件
+3. 命令行参数注入：将配置数据注入到容器的命令行参数中
+
+优点：
+
+1. 避免硬编码，将配置数据与应用代码分离（复杂配置和实时更新最好还是Nacos）
+2. 便于维护和更新，可以单独修改ConfigMap而不需要重新构建镜像
+3. 可以通过多种方式注入配置参数，更加灵活
+4. 可以通过Kubernetes的自动化机制对ConfigMap进行版本控制和回滚
+5. ConfigMap可以被多个Pod共享，减少配置数据的重复存储
+
+操作：
+
+```yaml
+#查看configmap (cm是缩写，只打cm就行)
+kubectl get configmap/cm
+
+#查看详情
+kubectl describe configmap/cm my-config
+
+#删除cm
+kubectl delete cm my-config
+```
+
+通过配置文件创建：
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: my-config
+data:
+    key1: value1
+    key2: value2
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: my-config
+data:
+    application.yml: |
+        name: my-app
+        spring:
+            datasource:
+                ...
+        
+```
+
+通过文件创建：
+
+```bash
+echo -n admin > ./username
+echo -n 123456 > ./password
+kubectl create cm myconfigmap --from-file=./username --from-file=./password
+```
+
+使用范例：
+
+```bash
+#docker安装redis
+docker run -v /data/redis.conf:/etc/redis/redis.conf \
+-v /data/redis/data:/data \
+-d --name myredis \
+-p 6379:6379 \
+redis:latest redis-server /etc/redis/redis.conf
+```
+
+创建configmap：
+
+```bash
+#创建redis.conf
+daemonize yes
+requirepass root
+
+#创建配置，redis保存到k8s的etcd
+kubectl create cm redis-conf --from-file=redis.conf
+
+#查看资源清单
+kubectl get cm redis-conf -oyaml
+```
+
+
+
+## Ingress
+
+> Ingress is frozen. New features are being added to the [Gateway API](https://kubernetes.io/docs/concepts/services-networking/gateway/).
+
+[Ingress](https://kubernetes.github.io/ingress-nginx/)是一种Kubernetes资源类型，它允许在Kubernetes集群中暴露HTTP和HTTPS服务，通过Ingress可以将流量路由到不同的服务和端点，无需使用不同的负载均衡，Ingress通常使用Ingress Controller实现，他是一个运行在Kubernetes集群中的负载均衡器，他根据Ingress规则配置路由并将流量转发到对应服务。
+
+客户端 ----Ingress管理的负载均衡器----> Ingress ----路由规则----> Service ----> pod
+
+所有的Service使用ClusterIP，使其只能内部访问
+
+```yaml
+apiVersion: v1
+kind: Ingress
+metadata:
+    name: web-ingress
+    annotations:
+        nginx.ingress.kuberneters.io/limit-rps: "1" #限制每个请求的RPS为1
+spec:
+    rules:
+        - host: tomcat.example.com  #转发域名
+          http:
+              paths:
+                  - pathType: Prefix
+                    path: /
+                    backend:
+                        service:
+                            name: tomcat-svc #tomcat的Service名字
+                            port:
+                                number: 8080 #Service的端口
+```
+
 
 
 
 
 # 安装教程（建议看网上的）
+
 ## 1. 安装: 1.20.1版本
 ### 1.1 安装docker
 参考Docker笔记
