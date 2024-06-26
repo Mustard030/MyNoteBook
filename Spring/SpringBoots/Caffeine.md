@@ -96,7 +96,7 @@ public CacheManager cacheManager(){
 - `@Cacheable`：表示该方法支持缓存。当调用被注解的方法时，如果对应的键已存在缓存，则不再执行方法体，直接从缓存中返回。当方法返回为null时，不进行缓存操作
 - `@CachePut`：表示执行该方法后，其值将作为最新结果更新到缓存中，**每次都会执行该方法**。
 - `@CacheEvict`：表示执行该方法后，将触发缓存清除操作。
-- `@Caching`：用于组合前三个注解，例如：
+- `@Caching`：用于组合前三个注解，当需要执行多个缓存操作时使用，例如：
 ```java
 @Caching(cacheable = {@Cacheable(value = "test", key = "#root.methodName")},  
         evict = {@CacheEvict(value = "test", key = "#root.methodName")})  
