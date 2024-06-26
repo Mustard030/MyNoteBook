@@ -522,9 +522,68 @@ public void query(){
 
 
 
+# 以注解方式实现方法结果缓存
+依赖：
+```xml
+<!--redis-->  
+<dependency>  
+    <groupId>org.springframework.boot</groupId>  
+    <artifactId>spring-boot-starter-data-redis</artifactId>  
+</dependency>  
+<!-- cache -->  
+<dependency>  
+    <groupId>org.springframework.boot</groupId>  
+    <artifactId>spring-boot-starter-cache</artifactId>  
+</dependency>
+```
+配置Redis的序列化器：
+```java
+@Configuration  
+public class RedisConfig {  
+  
+    @Bean  
+    public RedisCacheConfiguration redisCacheConfiguration() {  
+        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig();  
+        // 设置序列化方式  
+        config = config.serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(RedisSerializer.json()));  
+        return config;  
+    }  
+}
+```
+开启Cache，此处还可以配置CacheManager
+```java
+@Configuration  
+@EnableCaching  
+public class CacheConfig {  
+}
+```
+在ServiceImpl中使用注解即可，例如：
+```java
+@Service  
+@CacheConfig(cacheNames = "org.example.springbootstudy.service.impl.TestServiceImpl") // 相当于给定命名空间，命名隔离  
+public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService {
 
-
-
+	@Override  
+	// @CachePut(key = "#user.id")  // 一般用在添加和更新方法上，key为了唯一性，一般用对象的主键，但是只插入会有问题，插入后userAll就不匹配了  
+	@Caching(   // 这个注解可以包含多个缓存操作  
+	    put = @CachePut(key = "#user.id"),  // 添加这个User  
+	    evict = @CacheEvict(key = "'userAll'")  
+	)  
+	public User saveUser(User user) {  
+	    userMapper.insert(user);  
+	    return user;  
+	}
+}
+```
+在Redis中保存的key为`org.example.springbootstudy.service.impl.TestServiceImpl::1`，值格式为：
+```json
+{
+	"@class":"org.example.springbootstudy.entity.User",
+	"id":1,
+	"name":"jiemoo"
+}
+```
+具体注解的使用可以在Caffeine笔记中查询
 
 
 # 事务操作
