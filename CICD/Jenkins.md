@@ -24,7 +24,7 @@ cat /mydata/jenkins_home/secrets/initialAdminPassword
 ### 5.初始化
 - 浏览器访问`http://yourIPAddress:8080`输入上述密码进入管理界面创建初始管理员账户
 - 在 系统管理->全局工具配置 配置jdk和maven
-	- 安装jdk时提示使用Orcale账号 2696671285@qq.com Oracle123
+	- 安装jdk时提示使用Orcale账号
 - 在 配置->凭据->全局->添加凭据 中[创建SSH](#4.安装插件)用的账号和密码
 - 系统管理->系统配置->SSH remote hosts
 	- Hostname: ip地址
@@ -89,4 +89,5 @@ chmod +x ./jenkins.sh
 - 增加构建步骤 Execute shell script on remote host using ssh
 	- SSH site: root@IPAddress:22
 	- Command: /usr/local/jenkins/jenkins.sh
+
 ##### 保存&运行
