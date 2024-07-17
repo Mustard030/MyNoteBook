@@ -9,7 +9,7 @@
 <dependency>
    <groupId>com.github.ben-manes.caffeine</groupId>
    <artifactId>caffeine</artifactId>
-   <version>3.1.8</version>
+   <version>3.1.8</version>  <!-- 3.x以上的版本需要使用java11以上环境 -->
 </dependency>
 ```
 
@@ -77,6 +77,11 @@ Caffeine.newBuilder()
     <groupId>org.springframework.boot</groupId>  
     <artifactId>spring-boot-starter-cache</artifactId>  
 </dependency>
+<dependency>  
+    <groupId>com.github.ben-manes.caffeine</groupId>  
+    <artifactId>caffeine</artifactId>  
+    <version>3.1.8</version>  <!-- 3.x以上的版本需要使用java11以上环境 -->
+</dependency>
 ```
 使用：
 1. 注册`cacheManager`的bean
@@ -85,7 +90,9 @@ Caffeine.newBuilder()
 public CacheManager cacheManager(){  
     SimpleCacheManager cacheManager = new SimpleCacheManager();  
     ArrayList<CaffeineCache> caches = new ArrayList<>();  
-    caches.add(new CaffeineCache("test", Caffeine.newBuilder().build()));  
+    
+    caches.add(new CaffeineCache("test", Caffeine.newBuilder().build())); //可以添加多个
+     
     cacheManager.setCaches(caches);  
     return cacheManager;  
 }
