@@ -51,7 +51,7 @@ public enum ResponseConstantEnum {
 R类
 ```java
 @Data  
-@NoArgsConstructor  
+@NoArgsConstructor(access = lombok.AccessLevel.PRIVATE) //禁止自行new R类
 public class R<T> implements Serializable {  
   
     @Serial  
