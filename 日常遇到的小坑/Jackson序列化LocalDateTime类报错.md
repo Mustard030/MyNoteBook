@@ -1,3 +1,17 @@
+更简单地，直接注册ObjectMapper，并调用`findAndRegisterModules()`即可
+```java
+@Configuration  
+public class JacksonConfig {  
+    @Bean  
+    public ObjectMapper objectMapper() {  
+        ObjectMapper objectMapper = new ObjectMapper();  
+        objectMapper.findAndRegisterModules();  
+        return objectMapper;  
+    }
+}
+```
+
+
 创建Config
 ```java
 @Configuration  
