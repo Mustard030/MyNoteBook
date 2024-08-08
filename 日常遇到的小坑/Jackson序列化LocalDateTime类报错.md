@@ -1,4 +1,5 @@
-更简单地，直接注册ObjectMapper，并调用`findAndRegisterModules()`即可
+在Config中创建自定义的ObjectMapper Bean
+
 ```java
 @Configuration  
 public class JacksonConfig {  
@@ -7,7 +8,9 @@ public class JacksonConfig {
 	@ConditionalOnMissingBean(ObjectMapper.class)  
 	public ObjectMapper objectMapper(Jackson2ObjectMapperBuilder builder)  {  
 	    // 保留Springboot中的自动配置  
-	    ObjectMapper objectMapper = builder.createXmlMapper(false).build();  
+	    ObjectMapper objectMapper = builder  
+        .timeZone(TimeZone.getTimeZone(ZoneId.systemDefault()))  
+        .build();  
 	    objectMapper.findAndRegisterModules();  // 核心，下面的按需添加
 	      
 	    SimpleModule module = new SimpleModule();  
@@ -21,7 +24,7 @@ public class JacksonConfig {
 	    module.addSerializer(LocalDate.class, new LocalDateSerializer(DateTimeFormatter.ofPattern("yyyy-MM-dd")));  
 	    module.addDeserializer(LocalDate.class, new LocalDateDeserializer(DateTimeFormatter.ofPattern("yyyy-MM-dd")));  
 	    module.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));  
-	    module.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));  
+	    module.addDeserializer(LocalDateTime.class, new MyLocalDateTimeDeserializer());
 	      
 	    objectMapper.registerModule(module);  
 	      
@@ -37,39 +40,31 @@ public class JacksonConfig {
 ```
 
 
-创建Config
+定义序列化器
 ```java
-@Configuration  
-//@Slf4j  
-public class JacksonConfig {  
-  
-    public static JavaTimeModule buildJavaTimeModule() {  
-        JavaTimeModule javaTimeModule = new JavaTimeModule();  
-        javaTimeModule.addSerializer(LocalTime.class, new LocalTimeSerializer(DatePattern.NORM_TIME_FORMATTER));  
-        javaTimeModule.addSerializer(LocalDate.class, new LocalDateSerializer(DatePattern.NORM_DATE_FORMATTER));  
-        javaTimeModule.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(DatePattern.NORM_DATETIME_FORMATTER));  
-  
-        javaTimeModule.addDeserializer(LocalTime.class, new LocalTimeDeserializer(DatePattern.NORM_TIME_FORMATTER));  
-        javaTimeModule.addDeserializer(LocalDate.class, new LocalDateDeserializer(DatePattern.NORM_DATE_FORMATTER));  
-        javaTimeModule.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(DatePattern.NORM_DATETIME_FORMATTER));  
-        return javaTimeModule;  
-    }  
-  
-    @Bean  
-    @ConditionalOnMissingBean    public Jackson2ObjectMapperBuilderCustomizer customizer() {  
-        // log.info("[Jackson2ObjectMapperBuilderCustomizer][初始化customizer配置]");  
-        return builder -> {  
-            builder.locale(Locale.CHINA);  
-            builder.timeZone(TimeZone.getTimeZone(ZoneId.systemDefault()));  
-            builder.simpleDateFormat(DatePattern.NORM_DATETIME_PATTERN);  
-            builder.serializerByType(Long.class, ToStringSerializer.instance);  
-            builder.modules(buildJavaTimeModule());  
-        };  
+public class MyLocalDateTimeDeserializer extends JsonDeserializer<LocalDateTime> {  
+      
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");  
+      
+    @Override  
+    public LocalDateTime deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {  
+        String text = p.getText();  
+        try {  
+            if (text.matches("^\\d+$")) {  
+                // 时间戳转LocalDateTime  
+                return LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.parseLong(text)), ZoneId.systemDefault());  
+            } else {  
+                // 字符串转LocalDateTime  
+                return LocalDateTime.parse(text, FORMATTER);  
+            }  
+        } catch (Exception e) {  
+            throw new JsonParseException("Could not parse timestamp '" + text + "'");  
+        }  
     }  
 }
 ```
 
-使用：
+手动使用`objectMapper.readValue`：
 ```java
 @Resource  
 ObjectMapper objectMapper;
@@ -81,4 +76,6 @@ String json = "{\n" +
 Person person = objectMapper.readValue(json, Person.class);
 ```
 
-其中字段上需要加上`@JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")`
+自动转换不需要做自动注入
+
+字段上不需要加上`@JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")`
