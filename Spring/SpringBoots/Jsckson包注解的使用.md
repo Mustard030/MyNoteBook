@@ -1,3 +1,160 @@
+# @JsonSerialize 和 @JsonDeserialize
+
+JsonSerialize：指定自定义的序列化器，控制如何将对象转换为JSON字符串，包括自定义字段值的格式、类型转换等。
+JsonDeserialize：指定自定义的反序列化器，控制如何将JSON字符串转换为对象，包括处理特殊格式、类型转换等。
+使用时在类上或者在字段上`@JsonSerialize(using = CustomSerializer.class)`或者`@JsonDeserialize(using = CustomDeserializer.class)`
+
+# @JsonIgnore
+用在属性上，序列化和反序列化时忽略这个属性。
+
+# @JsonIgnoreProperties
+用在类上，序列化和反序列化时忽略指定的属性。
+```java
+@JsonIgnoreProperties({"property1", "property2"})  
+public class MyClass {  
+    private String property1;  
+    private String property2;  
+    private String property3;  
+    // Getter and Setter methods  
+}
+```
+# @JsonFormat
+序列化或反序列化时，对日期、时间等特殊类型的字段进行格式化的方式。它的作用是控制日期、时间等特殊类型字段的序列化和反序列化格式。
+```java
+public class Event {  
+    @JsonFormat(pattern = "yyyy-MM-dd")  
+    private Date eventDate;  
+  
+    // 省略构造函数和getter/setter方法  
+}
+```
+@JsonFormat 注解还支持如timezone、shape 等，用于更精细地控制字段的序列化和反序列化行为。
+
+# @JsonUnwrapped
+在序列化过程中，@JsonUnwrapped 注解告诉Jackson库将嵌套对象的属性合并到外层对象中，从而在生成的JSON数据中直接包含嵌套对象的属性。这样可以减少生成的JSON结构中的层级，使其更加扁平化。
+在反序列化过程中，@JsonUnwrapped 注解告诉 Jackson 库将指定的属性值从JSON数据中提取出来，并填充到外层对象的对应属性中。这样可以让 JSON 数据中的扁平结构直接映射到外层对象的属性上，简化了处理嵌套结构的代码逻辑。
+```java
+public class Employee {  
+    private String name;  
+      
+    @JsonUnwrapped  
+    private Address address;  
+ 
+}  
+  
+public class Address {  
+    private String city;  
+    private String street;  
+}
+```
+此时一个`Employee`对象会被序列化为：
+```java
+Employee employee = new Employee("John Doe", new Address("New York", "123 Main St"));
+
+{  
+  "name": "John Doe",  
+  "city": "New York",  
+  "street": "123 Main St"  
+}
+```
+而在反序列化时使用上面的json将会被转换为一个包含相应属性的`Employee`对象。
+除了基本用法，@JsonUnwrapped 注解还支持一些属性，如 prefix 和 suffix，用于控制展开的属性在合并到外层对象时是否添加前缀或后缀。
+```java
+public class Contact {  
+    @JsonUnwrapped(prefix = "home_")  
+    private Address homeAddress;  
+  
+    @JsonUnwrapped(prefix = "work_")  
+    private Address workAddress;  
+}
+```
+使用@JsonUnwrapped 注解后，嵌套对象的属性被直接合并到外层对象中，使得JSON数据与Java对象之间的转换更加简洁和直观。
+
+# @JsonAnyGetter
+在 Jackson 中，@JsonAnyGetter 注解用于指示 Jackson 在序列化过程中取得对象动态属性的方法。它的作用是将动态属性以键值对的形式==包含在序列化结果==中。
+
+**@JsonAnyGetter 注解的要求**
+使用 @JsonAnyGetter 注解的方法必须满足以下要求：
+1. 方法必须是公共的
+2. 方法不能有参数
+3. 方法的返回类型必须是 Map<String, Object> 或其子类
+```java
+class User { 
+	private String name; 
+	private int age; 
+	private Map<String, Object> dynamicProps;
+
+	@JsonAnyGetter 
+	public Map<String, Object> getDynamicProps() { 
+		return dynamicProps; 
+	}
+}
+```
+
+# @JsonAnySetter
+@JsonAnySetter用于指示 Jackson 在反序列化过程中将动态属性设置到对象上。它的作用是接收动态属性的键值对，并将其==设置到对象的属性==中。
+**@JsonAnyGetter 注解的要求**
+1.  方法必须是公共的
+2. 方法的参数包括一个 String 类型的键和一个 Object 类型的值
+3. 方法不能有返回值
+```java
+class User { 
+	private String name; 
+	private int age; 
+	private Map<String, Object> dynamicProps;
+
+	@JsonAnySetter 
+	public void setDynamicProp(String key, Object value) { 
+		dynamicProps.put(key, value); 
+	}
+}
+```
+
+# @JsonInclude
+用于控制在序列化过程中如何处理属性值为 null 的情况。它的作用是指定在将对象转换为 JSON 字符串时是否包含属性值为 null 的字段。
+
+@JsonInclude 注解可以应用在类级别或属性级别上。
+## 类级别的 @JsonInclude 注解
+当应用在类级别上时，@JsonInclude 注解指示了默认的 null 处理策略，该策略会应用到整个类的所有属性上。
+
+通过设置 @JsonInclude 的 value 属性，可以指定序列化过程中的 null 处理策略，常用的取值包括：
+**Include.ALWAYS**：始终包含属性值为 null 的字段。
+**Include.NON_NULL**：仅包含属性值不为 null 的字段。
+**Include.NON_EMPTY**：仅包含属性值不为 null 且不为空（如空字符串、空集合）的字段。
+**Include.USE_DEFAULTS**：使用默认的 null 处理策略。
+
+## 属性级别的@JsonInclude注解
+当应用在属性级别上时，@JsonInclude 注解可以覆盖类级别的默认 null 处理策略，为该属性指定独立的 null 处理策略。通过设置 @JsonInclude 的 value 属性，可以指定序列化过程中该属性的 null 处理策略，取值与类级别的注解相同。
+
+# @JsonAlias
+指定属性的别名，在反序列化时将别名与属性进行映射。
+```java
+public class MyClass {  
+    @JsonAlias({"name", "fullName"})  
+    private String property;  
+}
+```
+
+# @JsonManagedReference 和 @JsonBackReference
+用于解决循环引用的问题，即某个对象与其他对象存在相互引用的情况。
+```java
+public class Parent {  
+    private String name;  
+    @JsonManagedReference  
+    private List<Child> children;  
+    // Getter and Setter methods  
+}  
+  
+public class Child {  
+    private String name;  
+    @JsonBackReference  
+    private Parent parent;  
+    // Getter and Setter methods  
+}
+```
+
+@JsonManagedReference 注解用于标注父对象中的子对象集合，而 @JsonBackReference 注解用于标注子对象中的父对象引用。可以防止循环引用导致的无限递归问题。
+
 # @JsonCreator
 正常反序列化时，默认会调用实体类的无参构造来实例化一个对象，然后使用setter来初始化属性值，`@JsonCreator`这个注解可以自定义反序列化方法，走有这个注解的方法进行反序列化，原先的过程无效
 这个注解可以放在**构造方法**或者**静态的工厂方法**上
@@ -51,6 +208,115 @@ public PlayerStar(String name, Integer age, String[] hobbies, List<String> frien
 }
 ```
 效果也是一样的
+
+# @JsonTypeInfo
+在序列化和反序列化过程中，用于处理多态类型。
+```java
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")  
+@JsonSubTypes({  
+    @JsonSubTypes.Type(value = Dog.class, name = "dog"),  
+    @JsonSubTypes.Type(value = Cat.class, name = "cat")  
+})  
+public abstract class Animal {  
+    // Common properties and methods  
+}  
+  
+public class Dog extends Animal {  
+    // Dog-specific properties and methods  
+}  
+  
+public class Cat extends Animal {  
+    // Cat-specific properties and methods  
+}
+```
+@JsonTypeInfo 注解指定了类型信息在序列化和反序列化中的处理方式，@JsonSubTypes 注解标注了派生类与其对应的类型标识。
+
+# @JsonFilter
+用于动态过滤在序列化过程中要包含的属性。在运行时动态地指定要序列化的属性，在某些场景下非常有用，比如根据用户权限或者其他条件决定序列化的内容。
+使用 @JsonFilter 注解定义过滤器，先要定义一个过滤器，将其应用到需要动态过滤的类上。
+```java
+@JsonFilter("myFilter")  
+public class MyDto {  
+    private String name;  
+    private int age;  
+    private String email;  
+}
+```
+
+配置 ObjectMapper 使用过滤
+```java
+ObjectMapper mapper = new ObjectMapper();  
+SimpleFilterProvider filterProvider = new SimpleFilterProvider();  
+filterProvider.addFilter("myFilter", SimpleBeanPropertyFilter.filterOutAllExcept("name", "age"));  
+mapper.setFilterProvider(filterProvider);
+```
+应用过滤器进行序列化
+```java
+String json = mapper.writer(filterProvider).writeValueAsString(myDto);
+```
+序列化过程中，只会包含 "name" 和 "age" 两个属性，因为在过滤器中指定了这两个属性。
+
+使用 @JsonFilter注解可以实现动态过滤要序列化的属性，根据需求灵活地控制序列化结果，对于构建灵活的API或者处理动态权限控制非常有用。
+
+# @JsonAppend
+允许用户在序列化时动态地添加属性到 JSON 对象中，这些属性可能源自于 Java 对象的不同字段或方法。
+
+
+# @JsonIgnoreType
+在序列化和反序列化过程中忽略被注解的类型。这意味着被 @JsonIgnoreType 注解的类型将会被完全忽略，不会被包含在最终生成的 JSON 中，也不会被用于反序列化。@JsonIgnoreType 注解会被用于一些辅助性的、不需要被序列化和反序列化的类型，或者是一些与 JSON 交互无关的类型。
+
+```java
+@JsonIgnoreType  
+class AdditionalInfo {  
+    private String info;  
+    // 省略构造函数和getter/setter方法  
+}
+```
+
+# @JsonGetter和@JsonSetter
+@JsonGetter 注解
+1. 用于指定一个非标准的getter方法作为JSON属性的读取方法。
+2. 通过在非标准的getter方法上使用@JsonGetter 注解，可以指定该方法对应的JSON属性的名称。
+3. 可将Java对象中的属性映射到不同于属性名的JSON属性
+
+@JsonSetter 注解
+1. 用于指定一个非标准的 setter 方法作为 JSON 属性的写入方法。
+2. 通过在非标准的 setter 方法上使用 @JsonSetter 注解，可以指定该方法对应的 JSON 属性的名称。
+3. 可将JSON中的属性值映射到不同于属性名的 Java 对象属性，更灵活的属性赋值。
+```java
+public class Main {  
+    public static void main(String[] args) throws Exception {  
+        ObjectMapper mapper = new ObjectMapper();  
+        String json = "{\"first_name\":\"John\",\"last_name\":\"Doe\"}";  
+        Person person = mapper.readValue(json, Person.class);  
+        System.out.println(person.getFullName()); // 输出：John Doe  
+  
+        String outputJson = mapper.writeValueAsString(person);  
+        System.out.println(outputJson); // 输出：{"first_name":"John","last_name":"Doe"}  
+    }  
+}  
+  
+class Person {  
+    private String firstName;  
+    private String lastName;  
+  
+    @JsonGetter("full_name")  
+    public String getFullName() {  
+        return firstName + " " + lastName;  
+    }  
+  
+    @JsonSetter("first_name")  
+    public void setFirstName(String firstName) {  
+        this.firstName = firstName;  
+    }  
+  
+    @JsonSetter("last_name")  
+    public void setLastName(String lastName) {  
+        this.lastName = lastName;  
+    }  
+}
+```
+getFullName方法使用@JsonGetter("full_name")注解，指定返回的全名属性对应的JSON 属性名称为"full_name"。setFirstName和setLastName方法使用了@JsonSetter注解，指定它们对应的JSON属性名称。
 
 # @JsonValue
 这个注解可用在get方法上，属性字段上，**一个类只能用一个**，加上这个注解时，该类的对象序列化时就会只返回这个字段的值作为序列化结果
