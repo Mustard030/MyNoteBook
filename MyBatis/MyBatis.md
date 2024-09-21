@@ -154,14 +154,246 @@ public class TestMyBatis {
 }
 ```
 
+## 复杂查询
+### 一对一查询
+假设现在有结构如下
+```java
+@Data 
+public class UserDetail { 
+	int id; 
+	String description; 
+	Date register; 
+	String avatar; 
+} 
+
+@Data 
+public class User { 
+	int id; 
+	String name; 
+	int age; 
+	UserDetail detail; 
+}  
+```
+
+此时希望查询User时一并查出`UserDetail`，有两种方式
+#### 方式一
+首先定义好`sql`语句
+```xml
+<select id="selectUserById" resultMap="test"> 
+select * 
+from user 
+left join user_detail 
+on user.id = user_detail.id 
+where user.id = #{id}
+</select>
+```
+
+再定义好`resultMap`
+```xml
+<resultMap id="test" type="com.test.entity.User"> 
+	<id property="id" column="id"/> 
+	<result property="name" column="name"/> 
+	<result property="age" column="age"/> 
+	<association property="detail" column="id" javaType="com.test.entity.UserDetail"> 
+		<id property="id" column="id"/> 
+		<result property="description" column="description"/> 
+		<result property="register" column="register"/> 
+		<result property="avatar" column="avatar"/> 
+	</association> 
+</resultMap>
+```
+这时`association`标签的`column`和`javaType`可以不填，Mybatis会自动推断
+
+#### 方式二
+使用嵌套select语句进行查询，我们可以在查询`user`表的时候，同时查询`user_detail`表的对应信息，分别执行两个选择语句，最后再由Mybatis将其结果合并，效果和第一种方法是一样的
+```xml
+<select id="selectUserById" resultMap="test"> 
+	select * from user where id = #{id} 
+</select> 
+
+<resultMap id="test" type="com.test.entity.User"> 
+	<id property="id" column="id"/> 
+	<result property="name" column="name"/> 
+	<result property="age" column="age"/> 
+	<association property="detail" column="id" select="selectUserDetailById" javaType="com.test.entity.UserDetail"/> 
+</resultMap> 
+
+<select id="selectUserDetailById" resultType="com.test.entity.UserDetail"> 
+	select * from user_detail where id = #{id} 
+</select>
+```
+但是这时`association`标签的`column`和`javaType`必填，否则会报错
 
 
+### 一对多查询
+例如有数据结构如下
+```java
+@Data 
+public class Book { 
+	int bid; 
+	String title; 
+} 
 
+@Data 
+public class User { 
+	int id; 
+	String name; 
+	int age; 
+	List<Book> books; //直接得到用户所属的所有书籍信息 
+}
+```
+首先定义sql语句
+```sql
+select * from user left join book on user.id = book.uid where user.id = #{id}
+```
+此时的`resultMap`里面用的是`collection`
+```xml
+<resultMap id="test" type="com.test.entity.User"> 
+	<id column="id" property="id"/> 
+	<result column="name" property="name"/> 
+	<result column="age" property="age"/> 
+	<collection property="books" ofType="com.test.entity.Book"> 
+		<id column="bid" property="bid"/> 
+		<result column="title" property="title"/> 
+	</collection> 
+</resultMap>
+```
 
+如果用注解，应该这样写
+```java
+@Results({ 
+	@Result(id = true, column = "id", property = "id"), 
+	@Result(column = "id", property = "detail", one = @One(select = "selectDetailById")) 
+}) 
 
+@Select("select * from user where id = #{id};") 
+User selectUserById(int id); 
 
+@Select("select * from user_detail where id = #{id}") 
+UserDetail selectDetailById(int id);
+```
 
+在配置`@Result`注解时，只需要将one或是many参数进行填写即可，它们分别代表一对一关联和一对多关联，使用`@One`和`@Many`注解来指定其他查询语句进行嵌套查询，就像是使用`association`和`collection`那样
 
+### 多对一查询
+比如每个用户现在都有一个小组，但是他们目前都是在同一个小组中，此时我们查询所有用户信息的时候，需要自动携带他们的小组
+```java
+@Data 
+public class Group { 
+	int id; 
+	String name; 
+} 
+@Data 
+public class User { 
+	int id; 
+	String name; 
+	int age; 
+	Group group; 
+}
+```
+实际上这里跟我们之前的一对一非常类似，只需要让查询出来的每一个用户都左连接分组信息即可，这样Mybatis就可以通过`association`来自动处理了
+```xml
+<select id="selectAllUser" resultMap="test2"> 
+	select *, groups.name as gname 
+	from user 
+	left join `groups` 
+	on user.gid = groups.id 
+</select> 
+<resultMap id="test2" type="com.test.entity.User"> 
+	<id column="id" property="id"/> 
+	<result column="name" property="name"/> 
+	<result column="age" property="age"/> 
+	<association property="group"> 
+		<id column="gid" property="id"/> 
+		<result column="gname" property="name"/> 
+	</association> 
+</resultMap>
+```
+## 使用注解开发
+例如上面的`Select`和`insert`语句可以写为
+```java
+public interface TestMapper { 
+	@Select("select * from user") 
+	List<User> selectAllUser(); 
+	
+	@Options(useGeneratedKeys = true, keyColumn = "id", keyProperty = "id")  //插入后立刻自动赋值自增id到对象中
+	@Insert("insert into user (name, age) values (#{name}, #{age})") 
+	int insertUser(User user);
+}
+```
+这里`useGeneratedKeys`设置为`true`表示我们希望获取数据库生成的键，`keyProperty`设置为User类中的需要获取自增结果的属性名，`keyColumn`为数据库中自增的字段名称，但是一般情况下不需要手动设置，但是某些数据库（像 PostgreSQL）中，当主键列不是表中的第一列的时候，必须设置。
+
+假如现在我们的实体类字段名称与数据库不同，此时该如何像之前一样配置`resultMap`呢？
+```java
+public class User { 
+	int uid; 
+	String username; 
+	int age; 
+}
+```
+在原来的`resultMap`中，应该设置为
+```xml
+<resultMap id="test" type="User"> 
+	<id property="id" column="uid"/> 
+	<result column="name" property="username"/> 
+</resultMap>
+```
+可以使用`@Results`注解来实现这种操作，它的使用方式与`resultMap`几乎没什么区别
+```java
+@Results({ 
+	@Result(id = true, column = "id", property = "uid"), 
+	@Result(column = "name", property = "username") 
+}) 
+@Select("select * from user") 
+List<User> selectAllUser();
+```
+也可以单独在XML中配置一个`resultMap`然后直接通过注解的形式引用
+```java
+@ResultMap("test")
+@Select("select * from user") 
+List<User> selectAllUser();
+```
+
+还可以使用注解进行动态SQL的配置
+```xml
+<select id="selectUserById" resultType="User"> 
+	select * from user where id = #{id} 
+	<if test="id > 3"> 
+		and age > 18 
+	</if> 
+</select>
+```
+Mybatis针对于所有的SQL操作都提供了对应的Provider注解，用于配置动态SQL，我们需要先创建一个类编写我们的动态SQL操作
+```java
+public class TestSqlBuilder { 
+	public static String buildGetUserById(int id) { 
+		return new SQL(){{ //SQL类中提供了常见的SELECT、FORM、WHERE等操作 
+			SELECT("*"); 
+			FROM("user"); 
+			WHERE("id = #{id}"); 
+			if (id > 3) { 
+				WHERE("age > 18"); 
+			} 
+		}}.toString(); 
+	} 
+}
+```
+构建完成后，接着我们就可以使用`@SelectProvider`来引用这边编写好的动态SQL操作
+```java
+@SelectProvider(type = TestSqlBuilder.class, method = "buildGetUserById") 
+User selectUserById(int id);
+```
+如果遇到了多个参数的情况，我们同样需要使用`@Param`来指定参数名称，包括TestSqlBuilder中编写的方法也需要添加，否则必须保证形参列表与这边接口一致。虽然这样可以实现和之前差不多的效果，但是这实在是太过复杂了，我们还需要单独编写一个类来做这种事情，实际上我们也可以直接在`@Select`中编写一个XML配置动态SQL，Mybatis同样可以正常解析：
+```java
+@Select(""" 
+		<script> 
+			select * from user where id = #{id} 
+			<if test="id > 3"> and age > 18 </if> 
+		</script> 
+		""") 
+User selectUserById(int id);
+```
+这里只需要包括一个script标签我们就能像之前XML那样编写动态SQL了，只不过由于IDEA不支持这种语法的识别，可能会出现一些莫名其妙的红标，但是是可以正常运行的
 
 
 # MyBaits Plus
@@ -237,6 +469,52 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 ```
 
 ## 分页组件
+
+
+
+## 配置文件加密
+==从Mybatis Plus 3.3.2开始才支持这个功能==
+将配置文件中的内容替换为加密后的字符串，并且在前面加上`mpw:`
+```yaml
+spring:
+    datasource:
+        url: mpw:qRhvCwF4GOqjessEB3G+a5okP+uXXr96wcucn2Pev6Bf1oEMZ1gVpPPhdDmjQqoM
+        password: mpw:Hzy5iliJbwDHhjLs1L0j6w==
+        username: mpw:Xb+EgsyuYRXw7U7sBJjBpA==
+```
+**密钥加密**
+使用 AES 算法生成随机密钥，并对敏感数据进行加密。
+
+```java
+// 生成16位随机AES密钥
+String randomKey = AES.generateRandomKey();
+
+// 使用随机密钥加密数据
+String encryptedData = AES.encrypt(data, randomKey);
+
+//例：
+ 
+import com.baomidou.mybatisplus.core.toolkit.AES;
+ 
+public class Test {
+    public static void main(String[] args){
+        String data = "as123";
+        String randomKey = "d1104d7c3b616f0b";  //替换成自己的
+        // 使用密钥加密数据
+        String encryptedData = AES.encrypt(data, randomKey);
+        System.out.println(encryptedData);
+    }
+}
+```
+
+**如何使用**
+在启动应用程序时，通过命令行参数或环境变量传递密钥。
+
+// Jar 启动参数示例（在IDEA中设置Program arguments，或在服务器上设置为启动环境变量）
+`--mpw.key=d1104d7c3b616f0b`
+
+dockerfile
+`ENTRYPOINT ["java","-jar","app.jar","--mpw.key=d1104d7c3b616f0b"]`
 
 
 
