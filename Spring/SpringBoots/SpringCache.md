@@ -57,13 +57,14 @@ RedisConfig
 @Configuration  
 public class RedisConfig {  
   
-    @Resource  
-    private ObjectMapper objectMapper;  
+    // @Resource  
+    // private ObjectMapper objectMapper;  
     /**  
      * 项目中手动使用Redis配置  
      */  
   
-    /**     * 重新定义RedisTemplate，以string格式保存键、json格式保存值  
+    /**     
+     * 重新定义RedisTemplate，以string格式保存键、json格式保存值  
      * @param redisConnectionFactory 自动注册的redis🔗配置  
      * @return RedisTemplate<String, Object>  
      */  
@@ -91,8 +92,8 @@ public class RedisConfig {
      */  
     @Bean  
     public Jackson2JsonRedisSerializer<Object> jsonSerializer() {  
-  
-        // ObjectMapper mapper = new ObjectMapper();  
+		  // 这里不用全局注入的ObjectMapper是因为会干扰到其他模块的序列化，在这里会强制添加一个@class属性，但是在其他地方不需要
+		ObjectMapper objectMapper = new ObjectMapper();  
         objectMapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);  
         objectMapper.activateDefaultTyping(  
                 LaissezFaireSubTypeValidator.instance,  
