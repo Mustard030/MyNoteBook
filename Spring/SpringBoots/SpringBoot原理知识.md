@@ -225,7 +225,8 @@ Bean的创建和销毁方法有4种定义方法：
 核心在于`@EnableAspectJAutoProxy`这个注解，它导入了`@Import({AspectJAutoProxyRegistrar.class})`，利用`AspectJAutoProxyRegistrar`自定义给容器中注册Bean
 
 **AOP失效情况：**
-AOP代理通常在方法调用的外部进行拦截和增强，但对于同一个类内部的方法调用，由于绕过了代理对象，AOP增强可能会失效。为了解决这个问题，可以使用AopContext.currentProxy()方法来获取当前对象的AOP代理。AopContext.currentProxy()方法是Spring提供的一个静态方法，用于获取当前线程中正在执行的方法所属的代理对象。通过这个方法，可以在同一个类的方法中调用另一个方法，并确保AOP增强仍然生效。
+AOP代理通常在方法调用的外部进行拦截和增强，但对于同一个类内部的方法调用，由于绕过了代理对象，AOP增强可能会失效。为了解决这个问题，可以使用`AopContext.currentProxy()`方法来获取当前对象的AOP代理。`AopContext.currentProxy()`方法是Spring提供的一个静态方法，用于获取当前线程中正在执行的方法所属的代理对象。通过这个方法，可以在同一个类的方法中调用另一个方法，并确保AOP增强仍然生效。
+**注意：** 如果`AopContext.currentProxy()`在一个`@Async`方法里，会报错拿不到AOP对象，但是使用`applicationContext.getBean()`可以
 
 ```java
 //在使用本类方法时，不能直接调用
@@ -243,9 +244,10 @@ public class AppConfig {
         return creator;  
     }  
 }
+```
 
-
-// 再或者，使用applicationContext.getBean
+✨再或者，使用`applicationContext.getBean()`
+```java
 // 首先在ServiceImpl中注入ApplicationContext
 @Resource  
 private ApplicationContext applicationContext;
