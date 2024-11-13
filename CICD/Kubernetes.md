@@ -350,7 +350,7 @@ kubectl get cm redis-conf -oyaml
 
 ## Ingress
 
-> Ingress is frozen. New features are being added to the [Gateway API](https://kubernetes.io/docs/concepts/services-networking/gateway/).
+> Ingress is frozen. New features are being added to the [Gateway API](https://kubernetes.io/zh-cn/docs/concepts/services-networking/gateway/).
 
 [Ingress](https://kubernetes.github.io/ingress-nginx/)是一种Kubernetes资源类型，它允许在Kubernetes集群中暴露HTTP和HTTPS服务，通过Ingress可以将流量路由到不同的服务和端点，无需使用不同的负载均衡，Ingress通常使用Ingress Controller实现，他是一个运行在Kubernetes集群中的负载均衡器，他根据Ingress规则配置路由并将流量转发到对应服务。
 
