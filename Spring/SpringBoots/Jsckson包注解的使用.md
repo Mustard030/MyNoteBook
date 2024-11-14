@@ -197,6 +197,48 @@ public class Book {
     }
 }
 ```
+@JsonCreator和@JsonValue还可以配合达成反序列化时用一个字段，序列化时用另一个字段的效果
+```java
+@Getter  
+@AllArgsConstructor  
+public enum IssuesStockFlowStatusEnum {  
+    NOT_REPORTED(0, "未上报"),  
+    IN_PROGRESS(1, "审批中"),  
+    COMPLETED(2, "已完成"),  
+    ;    
+    
+    private final Integer code;  
+    
+    @JsonValue  // 序列化：根据 desc 字段序列化枚举
+    private final String desc;  
+    
+    // 反序列化：根据 code 字段反序列化枚举  
+    @JsonCreator  
+    public static IssuesStockFlowStatusEnum fromValue(Number value) {  
+        int intValue = value.intValue();  
+        for (IssuesStockFlowStatusEnum type : IssuesStockFlowStatusEnum.values()) {  
+            if (type.getCode().equals(intValue)) {  
+                return type;  
+            }  
+        }  
+        throw new IllegalArgumentException("Unknown enum value: " + value);  
+    }  
+}
+```
+
+传入时例如字段为：
+```json
+{
+	"status": 1
+}
+```
+反序列化则为
+```json
+{
+	"status": "审批中"
+}
+```
+
 **补充：**
 `@ConstructorProperties`的作用和`@JsonCreator`是一样的，但是他只能加在构造方法上，作为反序列化函数。但是他用法更简洁更方便，不用加很多`@JsonProperty`
 例如：
