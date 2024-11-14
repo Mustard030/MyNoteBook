@@ -416,7 +416,7 @@ public enum OrderFieldEnum {
 > 此注解的主要用途就是当你返回实体类时去除敏感信息。比如：有个user表里面有个pwd字段，查询出user后，不想返回pwd字段，可以使用此注解去除pwd字段。
 
 使用：
-```java title:Controller
+```java:Controller.java
 @GetMapping("/user")
 @JsonView({User.UserSimpleView.class})
 public List<User> query(){...}
@@ -427,7 +427,7 @@ public User get(@PathVariable String userName){...}
 ```
 
 
-```java title:User
+```java:User
 @Data
 @NoArgsConstructor  
 @AllArgsConstructor
@@ -454,5 +454,75 @@ public class User {
 }
 ```
 
-此时如果有字段没有加上`@JsonView`则在所有地方都不显示，这个注解也可以放在类上，他代表的含义是：没有加注解的字段默认用类上那个设置，除非特别设定
+如果没有在类上使用，仅在字段上使用@JsonView注解，此时如果有字段没有加上`@JsonView`则在所有地方都不显示，这个注解也**可以放在类**上，他代表的含义是：没有加注解的字段默认用类上那个设置，除非特别设定
 
+**注意：使用R类统一封装时，由于R类上没有关于JsonView的注解，并且R类是公用的，这会导致返回空对象**
+
+解决办法：
+```java:JacksonConfig.java
+@Configuration  
+public class JacksonConfig {  
+    @Primary  
+    @Bean(name = "objectMapper")  
+    public ObjectMapper objectMapper(Jackson2ObjectMapperBuilder builder)  {  
+        // 使用builder可以保留Springboot中的自动配置  
+        ObjectMapper objectMapper = builder  
+                .timeZone(TimeZone.getTimeZone(ZoneId.systemDefault()))  
+                .build();  
+        objectMapper.findAndRegisterModules();  
+        SimpleModule module = new SimpleModule();  
+        //Long类型的反序列化器，防止丢失精度  
+        module.addSerializer(Long.class, ToStringSerializer.instance);  
+        module.addSerializer(Double.class, ToStringSerializer.instance);  
+        module.addSerializer(BigDecimal.class, ToStringSerializer.instance);  
+        module.addSerializer(Double.TYPE, ToStringSerializer.instance);  
+        module.addSerializer(LocalTime.class, new LocalTimeSerializer(DateTimeFormatter.ofPattern("HH:mm:ss")));  
+        module.addDeserializer(LocalTime.class, new LocalTimeDeserializer(DateTimeFormatter.ofPattern("HH:mm:ss")));  
+        module.addSerializer(LocalDate.class, new LocalDateSerializer(DateTimeFormatter.ofPattern("yyyy-MM-dd")));  
+        module.addDeserializer(LocalDate.class, new LocalDateDeserializer(DateTimeFormatter.ofPattern("yyyy-MM-dd")));  
+        module.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+
+		// 关键在这里，添加R类的自定义序列化器
+        module.addSerializer(R.class, new RSerializer(objectMapper));  
+        
+        // module.addDeserializer(LocalDateTime.class, new MyLocalDateTimeDeserializer());  
+        objectMapper.registerModule(module);  
+        // 在序列化时，忽略值为 null 的属性  
+        // objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);  
+        // 在反序列化时，忽略在 json 中存在但 Java 对象不存在的属性。  
+        objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);  
+        return objectMapper;  
+    }
+}
+```
+
+R类序列化器如下：
+```java
+// @JsonComponent  这里绝对不可以使用JsonComponent自动注册序列化器，因为会有循环依赖问题
+public class RSerializer extends JsonSerializer<R> {  
+    private final ObjectMapper objectMapper;  
+    public RSerializer(ObjectMapper objectMapper) {  
+        this.objectMapper = objectMapper;  
+    }  
+    @Override  
+    public void serialize(R r, JsonGenerator jsonGenerator, SerializerProvider serializerProvider) throws IOException {  
+        // 获取当前视图  
+        Class<?> activeView = serializerProvider.getActiveView();  
+        // 开始序列化  
+        jsonGenerator.writeStartObject();  
+        // 序列化 code 和 message 字段  
+        jsonGenerator.writeNumberField("code", r.getCode());  
+        jsonGenerator.writeStringField("message", r.getMessage());  
+        // 序列化 data 字段，并根据视图进行过滤  
+        jsonGenerator.writeFieldName("data");  
+        if (r.getData() != null) {  
+            // 使用当前激活的视图来序列化数据  
+            this.objectMapper.writerWithView(activeView).writeValue(jsonGenerator, r.getData());  
+        } else {  
+            jsonGenerator.writeNull();  
+        }  
+        jsonGenerator.writeEndObject();  
+    }  
+}
+```
+这里序列化的内容需要根据自己的R类自行修改
