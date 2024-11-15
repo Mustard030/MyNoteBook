@@ -228,16 +228,14 @@ public enum IssuesStockFlowStatusEnum {
 
 传入时例如字段为：
 ```json
-{
-	"status": 1
-}
+{ "status": 1 }
 ```
 反序列化则为
 ```json
-{
-	"status": "审批中"
-}
+{ "status": "审批中" }
 ```
+
+原因是，本来如果没有`@JsonCreator`，其实会按照`@JsonValue`的字段进行序列化和反序列化，但是因为`@JsonCreator`覆盖了反序列化的行为，因此可以反序列化时用`@JsonCreator`的方法，序列化时用`@JsonValue`的字段
 
 **补充：**
 `@ConstructorProperties`的作用和`@JsonCreator`是一样的，但是他只能加在构造方法上，作为反序列化函数。但是他用法更简洁更方便，不用加很多`@JsonProperty`
@@ -251,7 +249,7 @@ public PlayerStar(String name, Integer age, String[] hobbies, List<String> frien
 ```
 效果也是一样的
 
-# @JsonTypeInfo
+# @JsonTypeInfo和@JsonSubTypes
 在序列化和反序列化过程中，用于处理多态类型。
 ```java
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")  
@@ -271,7 +269,29 @@ public class Cat extends Animal {
     // Cat-specific properties and methods  
 }
 ```
+
+序列化时就会有一个字段：
+```json
+{ "type": "dog" }
+```
+`type`来自与`@JsonTypeInfo`的`property`中指定的名字，`dog`来自于`@JsonSubTypes.Type`中的`name`属性值
 @JsonTypeInfo 注解指定了类型信息在序列化和反序列化中的处理方式，@JsonSubTypes 注解标注了派生类与其对应的类型标识。
+`@JsonTypeInfo`的属性：
+1. **`use`**：指定类型信息的表示方式。
+    - `JsonTypeInfo.Id.CLASS`：将完整的类名（包括包路径）嵌入 JSON。
+    - `JsonTypeInfo.Id.NAME`：将类名的简单名称作为类型信息（需要配合 `@JsonSubTypes` 使用，且`@JsonSubTypes`的`name`仅在这个时候起作用）。
+    - `JsonTypeInfo.Id.MINIMAL_CLASS`：只写出类的简单名，而不带包路径。
+    - `JsonTypeInfo.Id.NONE`：不包含类型信息（即不使用类型信息）。
+2. **`include`**：指定类型信息的存储方式。
+    - `JsonTypeInfo.As.PROPERTY`：将类型信息存储为对象的属性。
+    - `JsonTypeInfo.As.EXTERNAL_PROPERTY`：将类型信息作为外部属性存储。
+    - `JsonTypeInfo.As.WRAPPER_OBJECT`：将类型信息封装在一个包装对象中。
+    - `JsonTypeInfo.As.WRAPPER_ARRAY`: 将类型信息作为外部包装数组添加。
+1. **`property`**：指定存储类型信息的字段名。默认是 `@type`。
+
+`@JsonSubTypes` 参数说明：
+- **`value`**：指定子类类型。
+- **`name`**：指定用于识别子类的类型标识符，通常对应于 JSON 数据中的某个字段值。
 
 # @JsonFilter
 用于动态过滤在序列化过程中要包含的属性。在运行时动态地指定要序列化的属性，在某些场景下非常有用，比如根据用户权限或者其他条件决定序列化的内容。
