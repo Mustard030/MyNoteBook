@@ -143,15 +143,15 @@ server{
 	# 监听端口
 	listen 80;
 	# 如果要同时开放某个端口的http和https配置，可以都写上，并配上default_server，下面记得有ssl相关的配置
-    	# listen 80 ssl default_server; #这样http和https的80都能访问了
+    # listen 80 ssl default_server; #这样http和https的80都能访问了
 	
-	# 访问域名
-        server_name *.xxx.com;
+	# 访问域名，多个可以用空格分隔
+    server_name *.xxx.com;
     
-        return 301 https://$http_host$request_uri;
+    return 301 https://$http_host$request_uri;
 	
 	# 日志文件的存放路径
-        access_log  logs/xxx.com.access.log;
+    access_log  logs/xxx.com.access.log;
 	error_log   logs/xxx.com.error.log;
 	
 	error_page  403 /403.html;
@@ -193,8 +193,19 @@ server {
     
     access_log logs/xxx.com.access.log;
     error_log  logs/xxx.com.error.log;
+
+	#动静分离
+	location / {
+		root /path/to/web; #前端部署目录
+		index index.html index.htm;
+	}
+	
+	location /images/ {
+		alias /path/to/file/;
+		autoindex off;
+	}
     
-    location / {
+    location /api {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -232,7 +243,7 @@ server {
     }
     
     location ~* /.svn/ {
-        deny all;
+         deny all;
     }
 
     location ~* \.(tar|gz|zip|tgz|sh)$ {
@@ -241,7 +252,19 @@ server {
 }
 
 ```
-
+其中，关于`location`后的路径匹配规则，如果`proxy_pass`端口后面跟路径，该路径就会替换`location`中的路径，有`/`也会替换，没加路径就只会替换访问路径的ip和端口，并且拼接上`location`后面的路径。
+例如：现在有一个`server`块
+```
+server {
+	listen 8080;
+	server_name 10.x.x.1;
+	location /api {
+		proxy_pass http://10.x.x.2:8180/;
+	}
+}
+```
+此时前端访问：`http://10.x.x.1:8080/api/user/info/1`，那么真实的访问地址就是`http://10.x.x.2:8180/user/info/1`，因为最后有一个`/`。
+但是如果`proxy_pass`端口没有`/`，那么真实的访问路径就是`http://10.x.x.2:8180/api/user/info/1`
 
 
 ## 其他配置项
@@ -268,14 +291,14 @@ upstream node {
 
 **负载均衡调度策略**
 
-| 调度算法     | 概述                                                         |
-| ------------ | ------------------------------------------------------------ |
-| 轮询         | 逐一轮询，默认方式                                           |
-| weight       | 加权轮询，weight越大，分配几率越高                           |
-| ip_hash      | 按照访问IP的hash结果分配，会导致来自同一IP的请求固定访问一台服务器 |
-| url_hash     | 按照访问URL的hash结果分配                                    |
-| least_conn   | 最少链接数，哪个服务器链接数少分配给谁                       |
-| hash关键数值 | hash自定义的key                                              |
+| 调度算法       | 概述                                    |
+| ---------- | ------------------------------------- |
+| 轮询         | 逐一轮询，默认方式                             |
+| weight     | 加权轮询，weight越大，分配几率越高                  |
+| ip_hash    | 按照访问IP的hash结果分配，会导致来自同一IP的请求固定访问一台服务器 |
+| url_hash   | 按照访问URL的hash结果分配                      |
+| least_conn | 最少链接数，哪个服务器链接数少分配给谁                   |
+| hash关键数值   | hash自定义的key                           |
 
 ```
 upstream node {
@@ -293,7 +316,22 @@ upstream node {
 	server IP地址:8083;
 }
 ```
-
+```
+upstream node {
+	ip_hash;
+	server IP地址:8081;
+	server IP地址:8082;
+	server IP地址:8083;
+}
+```
+```
+upstream node {
+	least_conn;
+	server IP地址:8081;
+	server IP地址:8082;
+	server IP地址:8083;
+}
+```
 
 
 **location匹配**
@@ -306,3 +344,8 @@ location [ = | ~ | ~* | ^~ ] uri{}
 - `~`：用于表示uri包含正则表达式，并且区分大小写
 - `~*`：用于表示uri包含正则表达式，并且**不**区分大小写
 - `^~`：用于不含正则表达式的uri前，要求Nginx服务器找到标识uri和请求，字符串匹配度最高的location后，立即使用此location处理请求，而不再使用location块中的正则uri和请求字符串做匹配
+
+loation块中，alias和root的区别是
+- alias，将请求的uri替换为`alias`指定的路径。例如：请求为`/images/logo.png`，则nginx会查找`/path/to/file/logo.png`。
+- root，将请求的uri直接附加到root指定的路径后面，还是那个请求，nginx会查找`/path/to/web/images/logo.png`
+需要注意的是，如果使用alias的时候，location的路径是以`/`结尾的话，alias配置的路径也必须以`/`结尾，否则会路径错误
