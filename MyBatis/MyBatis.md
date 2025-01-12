@@ -421,6 +421,21 @@ spring:
 		driver-class-name: com.mysql.cj.jdbc.Driver
 ```
 
+**常见配置**
+```yaml
+mybatis-plus:  
+  type-aliases-package: com.example.demo.entity  
+  mapper-locations: classpath*:/mapper/**/*.xml  
+  configuration:  
+    map-underscore-to-camel-case: true # 驼峰命名规则  
+    cache-enabled: false # 关闭Mybatis二级缓存  
+  global-config:  
+    db-config:  
+      id-type: auto # 主键类型  
+      # id-type: ASSIGN_ID # 默认全局使用雪花算法  
+      update-strategy: not_null # 只更新非空字段
+```
+
 **实体类**
 ```java
 @Data 
@@ -468,7 +483,75 @@ public interface UserService extends IService<User> { //除了继承模版，我
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService { }
 ```
 
+**批量插入**
+批量插入建议使用IService的`saveBatch`，并且配合jdbc的`rewriteBatchedStatements=true`参数，这个参数能使批量插入的一堆insert语句转化成一条insert拼多个values的形式，速度最优
+
+**逻辑删除**
+在配置文件中配置逻辑删除的字段名和值
+```yaml
+mybatis-plus:  
+  global-config:  
+    db-config:  
+      logic-delete-field: is_delete # 逻辑删除字段名  
+      logic-delete-value: 1 # 逻辑删除值  
+      logic-not-delete-value: 0 # 逻辑未删除值
+```
+这里配置是全局的，可以单独设置，逻辑删除的标记字段加上注解
+```java
+@TableLogic(value=0, delval=1)  //value是逻辑未删除值，delval是逻辑已删除值
+```
+逻辑删除会导致垃圾数据越来越多，导致查询效率降低，并且sql中都要对逻辑删除字段做判断。如果不能删除，更建议将数据迁移到其他表。
+
+**枚举类型**
+在枚举类型的存储字段加上`@EnumValue`注解，本来还需要在配置文件中指定`default-enum-type-handler: com.baomidou.mybatisplus.core.handlers.MybatisEnumTypeHandler`，但是在MP3.5.2版本后无需再配置
+
+**JSON类型**
+假如数据库中有json数据，希望映射到对象中去，首先在实体类的`@TableName(value="表名", autoResultMap=true)`设置`autoResultMap`，然后在需要映射成对象的字段上加上`@TableField(typeHandler=JacksonTypeHandler.class)`或者其他类型的`typeHandler`
+
 ## 分页组件
+首先配置分页插件
+```java
+@Configuration
+@EnableTransactionManagement //开启事务  
+@MapperScan(basePackages = "com.**.dao")  
+public class MybatisPlusConfig {  
+    /**  
+     * 注册插件  
+     */  
+    @Bean
+    public MybatisPlusInterceptor mybatisPlusInterceptor() {  
+        MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();  
+        //添加分页插件  
+        PaginationInnerInterceptor pageInterceptor = new PaginationInnerInterceptor();  
+        //设置请求的页面大于最大页的操作，true调回首页，false继续请求，默认是false  
+        pageInterceptor.setOverflow(false);  
+        //单页分页的条数限制，默认500限制  
+        pageInterceptor.setMaxLimit(500L);  
+        //设置数据库类型  
+        pageInterceptor.setDbType(DbType.DM);  
+  
+        interceptor.addInnerInterceptor(pageInterceptor);  
+        //拒绝全表更新和删除操作  
+        interceptor.addInnerInterceptor(new BlockAttackInnerInterceptor());  
+        return interceptor;  
+    }  
+  
+}
+```
+
+使用：
+```java
+// 分页参数
+Page<User> page = Page.of(pageNo, pageSize)
+// 排序参数,true为升序，false为降序
+page.addOrder(new OrderItem("XX", false));
+// 查询
+Page<User> result = userService.page(page);
+
+```
+其实执行page方法之后，MP会把结果填回到page对象中，理论上是可以不用重新赋值给result的，不过习惯还是返回
+
+**通用分页实体转MP的分页插件**
 
 
 

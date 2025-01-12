@@ -128,7 +128,7 @@ public class AsyncController {
 ```java
 @Service
 public class AsyncService {
-	@Async
+	@Async("mailThreadPool")
 	public Future<String> executeAsyncTask() {
 		try {
 			// 模拟长时间运行的任务

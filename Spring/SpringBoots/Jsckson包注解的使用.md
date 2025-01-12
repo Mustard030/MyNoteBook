@@ -197,6 +197,46 @@ public class Book {
     }
 }
 ```
+@JsonCreator和@JsonValue还可以配合达成反序列化时用一个字段，序列化时用另一个字段的效果
+```java
+@Getter  
+@AllArgsConstructor  
+public enum IssuesStockFlowStatusEnum {  
+    NOT_REPORTED(0, "未上报"),  
+    IN_PROGRESS(1, "审批中"),  
+    COMPLETED(2, "已完成"),  
+    ;    
+    
+    private final Integer code;  
+    
+    @JsonValue  // 序列化：根据 desc 字段序列化枚举
+    private final String desc;  
+    
+    // 反序列化：根据 code 字段反序列化枚举  
+    @JsonCreator  
+    public static IssuesStockFlowStatusEnum fromValue(Number value) {  
+        int intValue = value.intValue();  
+        for (IssuesStockFlowStatusEnum type : IssuesStockFlowStatusEnum.values()) {  
+            if (type.getCode().equals(intValue)) {  
+                return type;  
+            }  
+        }  
+        throw new IllegalArgumentException("Unknown enum value: " + value);  
+    }  
+}
+```
+
+传入时例如字段为：
+```json
+{ "status": 1 }
+```
+反序列化则为
+```json
+{ "status": "审批中" }
+```
+
+原因是，本来如果没有`@JsonCreator`，其实会按照`@JsonValue`的字段进行序列化和反序列化，但是因为`@JsonCreator`覆盖了反序列化的行为，因此可以反序列化时用`@JsonCreator`的方法，序列化时用`@JsonValue`的字段
+
 **补充：**
 `@ConstructorProperties`的作用和`@JsonCreator`是一样的，但是他只能加在构造方法上，作为反序列化函数。但是他用法更简洁更方便，不用加很多`@JsonProperty`
 例如：
@@ -209,7 +249,7 @@ public PlayerStar(String name, Integer age, String[] hobbies, List<String> frien
 ```
 效果也是一样的
 
-# @JsonTypeInfo
+# @JsonTypeInfo和@JsonSubTypes
 在序列化和反序列化过程中，用于处理多态类型。
 ```java
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")  
@@ -229,7 +269,29 @@ public class Cat extends Animal {
     // Cat-specific properties and methods  
 }
 ```
+
+序列化时就会有一个字段：
+```json
+{ "type": "dog" }
+```
+`type`来自与`@JsonTypeInfo`的`property`中指定的名字，`dog`来自于`@JsonSubTypes.Type`中的`name`属性值
 @JsonTypeInfo 注解指定了类型信息在序列化和反序列化中的处理方式，@JsonSubTypes 注解标注了派生类与其对应的类型标识。
+`@JsonTypeInfo`的属性：
+1. **`use`**：指定类型信息的表示方式。
+    - `JsonTypeInfo.Id.CLASS`：将完整的类名（包括包路径）嵌入 JSON。
+    - `JsonTypeInfo.Id.NAME`：将类名的简单名称作为类型信息（需要配合 `@JsonSubTypes` 使用，且`@JsonSubTypes`的`name`仅在这个时候起作用）。
+    - `JsonTypeInfo.Id.MINIMAL_CLASS`：只写出类的简单名，而不带包路径。
+    - `JsonTypeInfo.Id.NONE`：不包含类型信息（即不使用类型信息）。
+2. **`include`**：指定类型信息的存储方式。
+    - `JsonTypeInfo.As.PROPERTY`：将类型信息存储为对象的属性。
+    - `JsonTypeInfo.As.EXTERNAL_PROPERTY`：将类型信息作为外部属性存储。
+    - `JsonTypeInfo.As.WRAPPER_OBJECT`：将类型信息封装在一个包装对象中。
+    - `JsonTypeInfo.As.WRAPPER_ARRAY`: 将类型信息作为外部包装数组添加。
+1. **`property`**：指定存储类型信息的字段名。默认是 `@type`。
+
+`@JsonSubTypes` 参数说明：
+- **`value`**：指定子类类型。
+- **`name`**：指定用于识别子类的类型标识符，通常对应于 JSON 数据中的某个字段值。
 
 # @JsonFilter
 用于动态过滤在序列化过程中要包含的属性。在运行时动态地指定要序列化的属性，在某些场景下非常有用，比如根据用户权限或者其他条件决定序列化的内容。
@@ -416,7 +478,7 @@ public enum OrderFieldEnum {
 > 此注解的主要用途就是当你返回实体类时去除敏感信息。比如：有个user表里面有个pwd字段，查询出user后，不想返回pwd字段，可以使用此注解去除pwd字段。
 
 使用：
-```java title:Controller
+```java:Controller.java
 @GetMapping("/user")
 @JsonView({User.UserSimpleView.class})
 public List<User> query(){...}
@@ -427,7 +489,7 @@ public User get(@PathVariable String userName){...}
 ```
 
 
-```java title:User
+```java:User
 @Data
 @NoArgsConstructor  
 @AllArgsConstructor
@@ -454,5 +516,75 @@ public class User {
 }
 ```
 
-此时如果有字段没有加上`@JsonView`则在所有地方都不显示，这个注解也可以放在类上，他代表的含义是：没有加注解的字段默认用类上那个设置，除非特别设定
+如果没有在类上使用，仅在字段上使用@JsonView注解，此时如果有字段没有加上`@JsonView`则在所有地方都不显示，这个注解也**可以放在类**上，他代表的含义是：没有加注解的字段默认用类上那个设置，除非特别设定
 
+**注意：使用R类统一封装时，由于R类上没有关于JsonView的注解，并且R类是公用的，这会导致返回空对象**
+
+解决办法：
+```java:JacksonConfig.java
+@Configuration  
+public class JacksonConfig {  
+    @Primary  
+    @Bean(name = "objectMapper")  
+    public ObjectMapper objectMapper(Jackson2ObjectMapperBuilder builder)  {  
+        // 使用builder可以保留Springboot中的自动配置  
+        ObjectMapper objectMapper = builder  
+                .timeZone(TimeZone.getTimeZone(ZoneId.systemDefault()))  
+                .build();  
+        objectMapper.findAndRegisterModules();  
+        SimpleModule module = new SimpleModule();  
+        //Long类型的反序列化器，防止丢失精度  
+        module.addSerializer(Long.class, ToStringSerializer.instance);  
+        module.addSerializer(Double.class, ToStringSerializer.instance);  
+        module.addSerializer(BigDecimal.class, ToStringSerializer.instance);  
+        module.addSerializer(Double.TYPE, ToStringSerializer.instance);  
+        module.addSerializer(LocalTime.class, new LocalTimeSerializer(DateTimeFormatter.ofPattern("HH:mm:ss")));  
+        module.addDeserializer(LocalTime.class, new LocalTimeDeserializer(DateTimeFormatter.ofPattern("HH:mm:ss")));  
+        module.addSerializer(LocalDate.class, new LocalDateSerializer(DateTimeFormatter.ofPattern("yyyy-MM-dd")));  
+        module.addDeserializer(LocalDate.class, new LocalDateDeserializer(DateTimeFormatter.ofPattern("yyyy-MM-dd")));  
+        module.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+
+		// 关键在这里，添加R类的自定义序列化器
+        module.addSerializer(R.class, new RSerializer(objectMapper));  
+        
+        // module.addDeserializer(LocalDateTime.class, new MyLocalDateTimeDeserializer());  
+        objectMapper.registerModule(module);  
+        // 在序列化时，忽略值为 null 的属性  
+        // objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);  
+        // 在反序列化时，忽略在 json 中存在但 Java 对象不存在的属性。  
+        objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);  
+        return objectMapper;  
+    }
+}
+```
+
+R类序列化器如下：
+```java
+// @JsonComponent  这里绝对不可以使用JsonComponent自动注册序列化器，因为会有循环依赖问题
+public class RSerializer extends JsonSerializer<R> {  
+    private final ObjectMapper objectMapper;  
+    public RSerializer(ObjectMapper objectMapper) {  
+        this.objectMapper = objectMapper;  
+    }  
+    @Override  
+    public void serialize(R r, JsonGenerator jsonGenerator, SerializerProvider serializerProvider) throws IOException {  
+        // 获取当前视图  
+        Class<?> activeView = serializerProvider.getActiveView();  
+        // 开始序列化  
+        jsonGenerator.writeStartObject();  
+        // 序列化 code 和 message 字段  
+        jsonGenerator.writeNumberField("code", r.getCode());  
+        jsonGenerator.writeStringField("message", r.getMessage());  
+        // 序列化 data 字段，并根据视图进行过滤  
+        jsonGenerator.writeFieldName("data");  
+        if (r.getData() != null) {  
+            // 使用当前激活的视图来序列化数据  
+            this.objectMapper.writerWithView(activeView).writeValue(jsonGenerator, r.getData());  
+        } else {  
+            jsonGenerator.writeNull();  
+        }  
+        jsonGenerator.writeEndObject();  
+    }  
+}
+```
+这里序列化的内容需要根据自己的R类自行修改
