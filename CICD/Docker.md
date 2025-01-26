@@ -65,10 +65,15 @@ sudo yum install -y yum-utils device-mapper-persistent-data lvm2
 sudo yum-config-manager \
     --add-repo \
     https://download.docker.com/linux/centos/docker-ce.repo
+
+
 # 阿里云的，推荐使用
 sudo yum-config-manager \
     --add-repo \
     https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
+
+#替换资源路径
+sudo sed -i 's+download.docker.com+mirrors.aliyun.com/docker-ce+' /etc/yum.repos.d/docker-ce.repo
 ```
 
 更新软件包索引（可选）：
@@ -160,19 +165,42 @@ $ sudo rm -rf /var/lib/docker
 
 登陆阿里云找到[容器服务](https://cr.console.aliyun.com/cn-hangzhou/instances/mirrors)，按提示操作即可
 ```bash
-vim /etc/docker/daemon.json
+cat <<EOF | sudo tee /etc/docker/daemon.json
 {
-	"registry-mirrors": ["https://xxxxxxx.mirror.aliyuncs.com"],
-	"exec-opts": ["native.cgroupdriver=systemd"]
+  "registry-mirrors": ["https://xxxxxxxxx.mirror.aliyuncs.com"],
+  "exec-opts": ["native.cgroupdriver=systemd"],
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "100m"
+  },
+  "storage-driver": "overlay2"
 }
-
-
-#重启docker
+EOF
+```
+**其他镜像加速地址**
+```shell
+cat <<EOF | sudo tee /etc/docker/daemon.json
+{
+　　"registry-mirrors": [
+        "https://dockerpull.org",
+        "https://docker.unsee.tech/",
+        "https://docker.1panel.live/",
+        "https://docker.udayun.com/",
+        "https://docker.nastool.de/"
+	],
+	"exec-opts": ["native.cgroupdriver=systemd"],
+    "log-driver": "json-file",
+    "log-opts": {
+      "max-size": "100m"
+    },
+    "storage-driver": "overlay2"
+}
+EOF
+```
+重启docker
+```bash
 systemctl restart docker && systemctl enable docker
 ```
-
-
-
 
 #### 回顾hello-werld流程
 
