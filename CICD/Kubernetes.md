@@ -385,7 +385,8 @@ spec:
 
 # 安装教程（建议看网上的）
 
-## 1. 安装: 1.20.1版本
+## 1. 安装: 1.20.9版本
+[参考文档](https://blog.csdn.net/Enchanter06/article/details/131326507)
 ### 1.1 安装docker
 参考Docker笔记
 ### 1.2 关闭防火墙
@@ -444,12 +445,13 @@ ntpdate time.windows.com
 cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
 [kubernetes]
 name=Kubernetes
-baseurl=http://mirrors.aliyun.com/kubernetes/yum/repos/kubernetes-e17-x86_64
+baseurl=http://mirrors.aliyun.com/kubernetes/yum/repos/kubernetes-el7-\$basearch
 enabled=1
 gpgcheck=0
 repo_gpgcheck=0
 gpgkey=http://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg
-http://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg
+   http://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg
+exclude=kubelet kubeadm kubectl
 EOF
 
 #如果之前安装过k8s，先卸载旧的
@@ -459,10 +461,10 @@ yum remove -y kubelet kubeadm kubectl
 yum list kubelet --showduplicates | sort -r
 
 #安装 kubelet，kubeadm，kubectl指定版本，我们使用kubeadm方式安装k8s集群
-sudo yum install -y kubelet-1.20.9 kubeadm-1.20.9 kubectl-1.20.9
+sudo yum install -y kubelet-1.20.9 kubeadm-1.20.9 kubectl-1.20.9 --disableexcludes=kubernetes
 
 #开机启动kubelet
-sudo systemctl enable --now kubelet
+sudo systemctl enable kubelet --now
 ```
 
 ### 1.4 初始化master节点
@@ -490,9 +492,9 @@ chmod +x ./images.sh && ./images.sh
 ```bash
 #在k8s-master机器上执行初始化操作(里面的第一个ip地址就是k8s-master机器的ip，改成你自己机器的，第二个改成自己的主机名，后面两个ip网段不用动)#所有网络范围不重叠
 kubeadm init \
---apiserver-advertise-address=x.x.x.x \
---control-plane-endpoint=k8s-master \
---image-repository registry.cn-hangzhou.aliyuncs.com/xxxxx \
+--apiserver-advertise-address=192.168.31.22 \
+--control-plane-endpoint=master \
+--image-repository registry.cn-hangzhou.aliyuncs.com/lfy_k8s_images \
 --kubernetes-version v1.20.9 \
 --service-cidr=10.96.0.0/16 \
 --pod-network-cidr=10.244.0.0/16
@@ -507,8 +509,10 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
 export KUBECONFIG=/etc/kubernetes/admin.conf
 
-#如果初始化失败，重置kubeadmkubeadm reset
-rm -rf /etc/cni/net.d $HOME/.kube/config
+#如果初始化失败，重置kubeadm
+kubeadm reset
+rm -rf /etc/cni/net.d $HOME/.kube
+sysctl -w net.ipv4.ip_forward=1
 #清理 iptables 规则
 iptables -F
 iptables -X
@@ -525,6 +529,43 @@ iptables -P OUTPUT ACCEPT
 curl https://docs.projectcalico.org/archive/v3.20/manifests/calico.yaml -O
 
 kubectl apply -f calico.yaml
+```
+到这一步时有可能会出现calico镜像下载失败的问题，原因在于yaml中规定了
+下载源为官方镜像，解决方法如下：
+1. 在官方的[Github Releases](https://github.com/projectcalico/calico/releases/tag/v3.20.6)中下载，再传到服务器中
+2. 进到文件所在目录执行以下脚本
+```bash
+# !/bin/bash
+
+# 解压
+tar -zxvf release-v3.20.6.tgz
+
+cd release-v3.20.6
+cd images
+
+# 循环加载 image
+sudo tee load-images.sh <<-'EOF'
+#!/bin/bash
+tars=(
+calico-kube-controllers.tar
+calico-node.tar
+calico-typha.tar
+calico-cni.tar
+calico-pod2daemon-flexvol.tar
+)
+for tar in ${tars[@]} ; do
+docker load < $tar
+done
+EOF
+
+chmod +x load-images.sh && ./load-images.sh
+
+# 替换 docker.io 前缀
+cp calico.yaml calico.cp.yaml
+sed -i 's/image: docker.io\//image: /g' calico.yaml
+
+# 如果你的 VPC 网段和 pod-network 不冲突，那么可以解开下面注释
+# kubectl apply -f ../k8s-manifests/calico.yaml
 ```
 
 #### 1.4.4 加入node节点
