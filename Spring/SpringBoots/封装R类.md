@@ -75,14 +75,12 @@ public class R<T> implements Serializable {
      */  
   
     public static <T> R<T> ok() {  
-  
         R<T> response = new R<>();  
         response.setCode(ResponseConstantEnum.SUCCESS.getResultCode());  
         response.setMessage(ResponseConstantEnum.SUCCESS.getResultMessage());  
         return response;  
     }  
     public static <T> R<T> ok(T data) {  
-  
         R<T> response = new R<>();  
         response.setCode(ResponseConstantEnum.SUCCESS.getResultCode());  
         response.setMessage(ResponseConstantEnum.SUCCESS.getResultMessage());  
@@ -102,7 +100,6 @@ public class R<T> implements Serializable {
   
   
     public static <T> R<T> error(ResponseConstantEnum errorEnum){  
-  
         R<T> response = new R<>();  
         response.setCode(errorEnum.getResultCode());  
         response.setMessage(errorEnum.getResultMessage());  
@@ -110,7 +107,6 @@ public class R<T> implements Serializable {
     }  
   
     public static <T> R<T> error(ResponseConstantEnum errorEnum, String errorMsg){  
-  
         R<T> response = new R<>();  
         response.setCode(errorEnum.getResultCode());  
         response.setMessage(errorMsg);  

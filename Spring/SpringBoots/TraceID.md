@@ -27,13 +27,15 @@ public class TraceIdUtils {
   
     /**  
      * 获取TraceId  
-     */    public static String getTraceId() {  
+     */    
+    public static String getTraceId() {  
         return MDC.get(TRACE_ID_KEY);  
     }  
   
     /**  
      * 移除TraceId  
-     */    public static void removeTraceId() {  
+     */    
+    public static void removeTraceId() {  
         MDC.remove(TRACE_ID_KEY);  
     }  
 }
