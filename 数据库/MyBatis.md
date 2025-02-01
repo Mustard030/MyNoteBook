@@ -449,10 +449,61 @@ public class User {
 	String email; 
 	@TableField("password") 
 	String password; 
+    
+	@TableField(fill = FieldFill.INSERT)
+	LocalDateTime createTime;
+    
+    @TableField(fill = FieldFill.INSERT)  // 初始自动填充
+	@Version  //乐观锁注解
+	Integer version;
 }
 ```
+其中`@TableField`有个属性`fill`，用于自动填充。`MetaObjectHandler`的写法如下：
+
+```java
+@Slf4j
+@Component  //确保能被Spring容器管理
+public class MyMetaObjectHandler implements MetaObjectHandler {
+    /**
+     * 插入数据时的填充规则
+     *
+     * @param metaObject Meta 对象
+     */
+    @Override
+    public void insertFill(MetaObject metaObject) {
+        log.info("开始插入数据...");
+        LocalDateTime now = LocalDateTime.now();
+        // 应该从上下文中获取当前用户名
+        String creator = "xxx";
+        this.strictInsertFill(metaObject, "createTime", LocalDateTime.class, now);
+        this.strictInsertFill(metaObject, "updateTime", LocalDateTime.class, now);
+        this.strictInsertFill(metaObject, "creator", String.class, creator);
+        this.strictInsertFill(metaObject, "updater", String.class, creator);
+        this.strictInsertFill(metaObject, "deleted", Integer.class, 0);
+        this.strictInsertFill(metaObject, "version", Long.class, 1L);
+    }
+    
+    /**
+     * 更新数据时的填充规则
+     *
+     * @param metaObject Meta 对象
+     */
+    @Override
+    public void updateFill(MetaObject metaObject) {
+        log.info("开始更新数据...");
+        // 应该从上下文中获取当前用户名
+        String creator = "xxx";
+        this.strictUpdateFill(metaObject,"updateTime", LocalDateTime.class, LocalDateTime.now());
+        this.strictUpdateFill(metaObject, "updater", String.class, creator);
+    }
+}
+
+```
+
+
 
 **Mapper**
+
 ```java
 @Mapper  
 public interface UserMapper extends BaseMapper<User> {  
@@ -553,6 +604,78 @@ Page<User> result = userService.page(page);
 
 **通用分页实体转MP的分页插件**
 
+## 乐观锁插件
+
+乐观锁是一种并发控制机制，用于确保在记录更新时，该记录未被其他事务修改。MybatisPlus提供了`OptimisticLockerInnerInterceptor`插件。
+
+乐观锁的实现一般包含以下几个步骤：
+
+1. 读取记录时，获取当前版本号
+2. 在更新记录时，将这个版本号一同传递
+3. 执行更新操作时，设置`version=newVersion`的条件为`version=oldVersion`
+4. 如果版本号不匹配，则更新失败
+
+配置：
+
+```java
+@Configuration
+@MapperScan("org.example.springbootdemo.mapper")
+public class MybatisPlusConfig {
+    @Bean
+    public MybatisPlusInterceptor mybatisPlusInterceptor(){
+        MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
+        interceptor.addInnerInterceptor(new OptimisticLockerInnerInterceptor());  // 乐观锁插件
+        return interceptor;
+    }
+}
+
+```
+
+
+
+建立一个字段`optimisticLockVersion`，并加上`@Version`。
+
+**注意：**
+
+- version字段仅支持`int`、`Integer`、`long`、`Long`、`Date`、`Timestamp`、`LocalDateTime`类型
+- 对于整数类型，newVersion是oldVersion+1
+- newVersion会自动写回到实体对象中
+- 支持内置的 `updateById(entity)` 和 `update(entity, wrapper)`, `saveOrUpdate(entity)`, `insertOrUpdate(entity) (version >=3.5.7)` 方法
+- 自定义方法更新时如果满足内置参数的参数条件方式也会执行乐观锁逻辑，例如自定义`myUpate(entity)` 这个和 `updateById(entity)` 是等价的，会提取参数进行乐观锁填充，但更新实现需要自行处理
+- 在 `update(entity, wrapper)` 方法中，`wrapper` 不能复用
+
+
+
+## 多表联查
+
+依赖：
+
+```xml
+<dependency>
+    <groupId>com.github.yulichang</groupId>
+    <artifactId>mybatis-plus-join-boot-starter</artifactId>
+    <version>${mybatis-plus-join.version}</version>
+</dependency>
+```
+
+Mapper不再继承BaseMapper，改为继承MPJBaseMapper
+
+使用：
+
+```java
+MPJLambdaWrapper<Student> wrapper = new MPJLambdaWrapper<>();
+// 构建查询哪些数据，并解析到VO的哪个属性中
+wrapper.selectAs(Student::getSname, StudentVO::getSname)
+        .selectAs(Student::getSage, StudentVO::getSage)
+        .selectAs(Student::getSsex, StudentVO::getSsex);
+// 连表
+wrapper.leftJoin(Student1.class, Student1::getSname, Student::getSname)  //副表表实体的class，两个表的on条件
+        .leftJoin(Student2.class, Student2::getSname, Student::getSname);
+
+//后续构建where条件
+```
+
+
 
 
 ## 配置文件加密
@@ -598,6 +721,215 @@ public class Test {
 
 dockerfile
 `ENTRYPOINT ["java","-jar","app.jar","--mpw.key=d1104d7c3b616f0b"]`
+
+
+
+## 集成Druid数据源
+
+MP默认的数据源使用Hikari框架，这里更换成Druid
+
+```xml
+<!-- 阿里数据库连接池 -->
+<dependency>
+    <groupId>com.alibaba</groupId>
+    <artifactId>druid-spring-boot-starter</artifactId>
+    <version>${druid.version}</version>
+</dependency>
+```
+
+常用配置项：
+
+```yaml
+spring:
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    druid:
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      url: jdbc:mysql://x.x.x.x:3306/xxx?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8
+      username: xxx
+      password: xxx
+      # 如果initialSize数量比较多，开启异步初始化可以加快应用启动速度
+      async-init: true
+      # 初始化连接数
+      initial-size: 5
+      # 最大连接数
+      max-active: 20
+      # 最小空闲连接数
+      min-idle: 5
+      # 获取连接等待超时时间
+      max-wait: 60000
+      # 配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒
+      time-between-eviction-runs-millis: 60000
+      # 增强time-between-eviction-runs-millis的周期性连接检查，minIdle内的空闲连接，每次检查强制验证连接有效性
+      keep-alive: true
+      # 配置一个连接在池中最小生存的时间，单位是毫秒
+      min-evictable-idle-time-millis: 300000
+      # 配置一个连接在池中最大生存的时间，单位是毫秒
+      max-evictable-idle-time-millis: 172800000
+      # 检测连接是否有效的sql，要求设置testWhileIdle=true，否则无效
+      test-while-idle: true
+      validation-query: SELECT 1
+      validation-query-timeout: 1
+      # 是否开启连接的检测功能，在获取连接时检测连接是否有效
+      test-on-borrow: false
+      # 归还连接时检测连接是否有效
+      test-on-return: false
+      # 是否缓存preparedStatement，也就是PSCache，PSCache对支持游标的数据库性能提升巨大，比如说oracle，在mysql下建议关闭。
+      pool-prepared-statements: false
+      
+      filter:
+        stat:
+          enabled: true
+          db-type: mysql
+          log-slow-sql: true
+          slow-sql-millis: 3000
+          connection-stack-trace-enable: true
+        wall:
+          enabled: true
+          db-type: mysql
+          config:
+            # 允许插入
+            insert-allow: true
+            # 禁止删除
+            delete-allow: false
+            # 允许更新
+            update-allow: true
+            # 禁止删除表
+            drop-table-allow: false
+      stat-view-servlet:
+        # http://localhost:8080/druid/index.html
+        # 启用StatViewServlet
+        enabled: true
+        # 访问内置监控页面的路径，内置监控页面的首页是/druid/index.html
+        url-pattern: /druid/*
+        # 不允许清空统计数据，重新计算
+        reset-enable: false
+        # 配置访问监控页面的账号密码
+        login-username: admin
+        login-password: admin
+        # 允许访问的地址，不配置或为空则允许所有地址访问
+        allow: 127.0.0.1
+        # 拒绝访问的地址，优先级高于allow
+        # deny:
+```
+
+
+
+## 多数据源
+
+依赖：
+
+```xml
+<!-- 数据库连接池-->
+<dependency>
+    <groupId>com.baomidou</groupId>
+    <artifactId>dynamic-datasource-spring-boot-starter</artifactId>
+    <version>${dynamic-datasource.version}</version>
+</dependency>
+```
+
+配置
+
+```yaml
+spring:
+  autoconfigure:
+    # 忽略Druid的默认配置
+    exclude: com.alibaba.druid.spring.boot.autoconfigure.DruidDataSourceAutoConfigure
+  datasource:
+    dynamic:
+      primary: master
+      # 是否启用严格模式，当所有的数据源都没有可用连接时会报错，阻止系统启动
+      strict: false
+      datasource:
+        master:
+          url: jdbc:mysql://x.x.x.x:3306/xxx?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8
+          username: xxx
+          password: xxx
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          type: com.alibaba.druid.pool.DruidDataSource
+        slave:
+          url: jdbc:mysql://x.x.x.x:3306/xxx?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8
+          username: xxx
+          password: xxx
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          type: com.alibaba.druid.pool.DruidDataSource
+    druid:
+      # 如果initialSize数量比较多，开启异步初始化可以加快应用启动速度
+      async-init: true
+      # 初始化连接数
+      initial-size: 5
+      # 最大连接数
+      max-active: 20
+      # 最小空闲连接数
+      min-idle: 5
+      # 获取连接等待超时时间
+      max-wait: 60000
+      # 配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒
+      time-between-eviction-runs-millis: 60000
+      # 增强time-between-eviction-runs-millis的周期性连接检查，minIdle内的空闲连接，每次检查强制验证连接有效性
+      keep-alive: true
+      # 配置一个连接在池中最小生存的时间，单位是毫秒
+      min-evictable-idle-time-millis: 300000
+      # 配置一个连接在池中最大生存的时间，单位是毫秒
+      max-evictable-idle-time-millis: 172800000
+      # 检测连接是否有效的sql，要求设置testWhileIdle=true，否则无效
+      test-while-idle: true
+      validation-query: SELECT 1
+      validation-query-timeout: 1
+      # 是否开启连接的检测功能，在获取连接时检测连接是否有效
+      test-on-borrow: false
+      # 归还连接时检测连接是否有效
+      test-on-return: false
+      # 是否缓存preparedStatement，也就是PSCache，PSCache对支持游标的数据库性能提升巨大，比如说oracle，在mysql下建议关闭。
+      pool-prepared-statements: false
+      
+      filter:
+        stat:
+          enabled: true
+          db-type: mysql
+          log-slow-sql: true
+          slow-sql-millis: 3000
+          connection-stack-trace-enable: true
+        wall:
+          enabled: true
+          db-type: mysql
+          config:
+            # 允许插入
+            insert-allow: true
+            # 禁止删除
+            delete-allow: false
+            # 允许更新
+            update-allow: true
+            # 禁止删除表
+            drop-table-allow: false
+      stat-view-servlet:
+        # http://localhost:8080/druid/index.html
+        # 启用StatViewServlet
+        enabled: true
+        # 访问内置监控页面的路径，内置监控页面的首页是/druid/index.html
+        url-pattern: /druid/*
+        # 不允许清空统计数据，重新计算
+        reset-enable: false
+        # 配置访问监控页面的账号密码
+        login-username: admin
+        login-password: admin
+        # 允许访问的地址，不配置或为空则允许所有地址访问
+        allow: 127.0.0.1
+        # 拒绝访问的地址，优先级高于allow
+        # deny:
+```
+
+然后在对应的Service里面打注解`@DS("数据源名称")`，但是这样很容易写错，可以自行封装一个。
+
+```java
+@Target({ElementType.TYPE, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@DS("master")
+public @interface Master { }
+```
+
+这样会更方便些，但是baomidou也有一个这样的实现，但是他固定了名字，如果还是用master、slave可以用他的注解，名字不一样就自己封装一个
 
 
 
