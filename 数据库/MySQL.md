@@ -506,6 +506,15 @@ ALTER TABLE 表名 DROP FOREIGN KEY 外键名称;
 | SET DEFAULT | 父表有变更时，子表将外键列设置成一个默认的值(Innodb不支持)   |
 
 
+## 数据库连接参数
+useUnicode=true  使用Unicode字符
+characterEncoding=utf8  字符集编码
+zeroDateTimeBehavior=convertToNull  时间参数为0时替换为空
+useSSL=false  使用SSL连接
+serverTimezone=GMT%2B8  服务器时区
+rewriteBatchedStatements=true  允许批量插入
+useServerPrepStmts=true  开启预编译
+allowMultiQueries=true  允许多语句查询
 
 
 
