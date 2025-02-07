@@ -267,7 +267,7 @@ public class Dog extends Animal {
   
 public class Cat extends Animal {  
     // Cat-specific properties and methods  
-}
+	}
 ```
 
 序列化时就会有一个字段：

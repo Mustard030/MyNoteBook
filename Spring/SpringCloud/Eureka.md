@@ -98,7 +98,7 @@ Windows: `notepad C:\Windows\system32\drivers\etc\hosts`
 ```
 
 在IDEA编辑启动配置文件
-![[Pasted image 20240208165249.png]]
+![Pasted_image_20240208165249](./Eureka.assets/Pasted_image_20240208165249.png)
 
 其他服务中配置文件添加上eureka02
 ```yml title:application.yml

@@ -139,22 +139,171 @@ spec:
 在`.spec.volumes`字段中设置为Pod提供的卷，并在`.spec.containers[*].volumeMounts`字段中声明卷在容器中挂载的位置。容器中的进程看到的文件系统视图是由他们的容器镜像的初始内容以及挂载在容器中的卷（如果定义了）所组成。其中根文件系统间容器镜像的内容相吻合。任何在该文件系统下的写入操作，如果被允许的话，都会影响接下来容器中进程访问文件系统时所看到的内容。
 
 #### 搭建nfs文件系统
-安装：
-```bash
-#在每个机器上
-yum install -y nfs-utils
 
-#在master执行
-echo "/nfs/data *(insecure,rw,sync,no_root_squash)" > /etc/exports
-mkdir -p /nfs/data
-systemctl enable rpcbind
-systemctl enable nfs-server
-systemctl start rpcbind
-systemctl start nfs-server
-exportfs -r
-exportfs
+```shell
+sudo yum install nfs-utils -y
 ```
-配置文件：
+
+启动NFS服务,并设置NFS服务开机自动启动
+
+```shell
+sudo systemctl start rpcbind 
+sudo systemctl enable rpcbind 
+sudo systemctl start nfs-server
+sudo systemctl enable nfs-server
+```
+
+创建共享目录并修改权限（以`/var/nfsshare`为例）：/var/nfsshare是你存放数据的目录
+
+```shell
+sudo mkdir /var/nfsshare
+sudo chown nfsnobody:nfsnobody /var/nfsshare
+sudo chmod 755 /var/nfsshare
+```
+
+配置NFS导出的配置文件（编辑`/etc/exports`文件）
+
+```shell
+sudo vi /etc/exports
+```
+
+添加
+
+```text
+/var/nfsshare  <kubernetes-worker-node-ip>(rw,sync,no_root_squash,no_all_squash)
+```
+
+\<kubernetes-worker-node-ip\> 是你的k8s节点ip，例如： 代表哪些k8s工作节点有权限访问nfs的
+查询k8s节点ip，命令：
+
+```shell
+kubectl get nodes -owide
+```
+
+拿到INTERNAL-IP列所有IP
+例如：
+
+```text
+/var/nfsshare  172.16.177.23(rw,sync,no_root_squash,no_all_squash)
+/var/nfsshare  172.16.177.24(rw,sync,no_root_squash,no_all_squash)
+```
+
+导出共享目录并重启NFS服务
+
+```shell
+sudo exportfs -rav
+sudo systemctl restart nfs-server
+```
+
+==或者更直接的，使用下面这个脚本==
+
+```shell
+sudo vim nfs_setup.sh
+```
+
+粘贴下面的命令
+
+```bash
+#!/bin/bash
+
+# 定义共享目录的变量
+NFS_SHARE_DIR=$1
+if [ -z "$NFS_SHARE_DIR" ]; then
+  echo "Usage: $0 <NFS_SHARE_DIR>"
+  exit 1
+fi
+
+# 确保 nfsnobody 用户和组存在
+if ! id "nfsnobody" &>/dev/null; then
+  echo "User nfsnobody does not exist. Creating user and group..."
+  sudo groupadd nfsnobody
+  sudo useradd -g nfsnobody nfsnobody
+fi
+
+# 安装 nfs-utils
+echo "Installing nfs-utils..."
+sudo yum install nfs-utils -y
+# 设置开机启动
+sudo systemctl start rpcbind 
+sudo systemctl enable rpcbind 
+sudo systemctl start nfs-server
+sudo systemctl enable nfs-server
+echo "rpcbind nfs-server have started"
+
+# 创建共享目录
+sudo mkdir -p $NFS_SHARE_DIR
+
+# 修改目录的权限
+sudo chown nfsnobody:nfsnobody $NFS_SHARE_DIR
+sudo chmod 755 $NFS_SHARE_DIR
+
+# 获取 INTERNAL-IP 地址并生成 exports 配置
+for ip in $(kubectl get nodes -o=jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'); do
+  echo "$NFS_SHARE_DIR  $ip(rw,sync,no_root_squash,no_all_squash)" | sudo tee -a /etc/exports
+done
+# 将所有的IP都加入可访问地址还可以使用这条命令
+# echo "<你的共享目录地址> *(insecure,rw,sync,no_root_squash)" > /etc/exports
+# 如果你不想把所有的节点IP都加入到nfs的可访问地址中，可以自己添加条目到/etc/exports
+#<你的共享目录地址如/var/nfsshare>  x.x.x.x(rw,sync,no_root_squash,no_all_squash)
+
+# 重新导出共享目录
+sudo exportfs -rav
+
+# 重启 NFS 服务
+sudo systemctl restart nfs-server
+
+echo "NFS server setup completed with directory $NFS_SHARE_DIR"
+```
+
+赋予脚本执行权限
+
+```shell
+chmod +x nfs_setup.sh
+```
+
+运行并指定共享目录
+
+```shell
+./nfs_setup.sh /var/nfsshare
+```
+
+
+
+创建持久化卷声明（PVC）和持久化卷（PV）资源以使用NFS共享。以下是一个简单的PV和PVC的YAML
+
+```yaml
+# PersistentVolume.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+ name: nfs-pv
+spec:
+ capacity:
+   storage: 1Gi
+ accessModes:
+   - ReadWriteMany
+ nfs:
+   server: <nfs-server-ip>
+   path: /var/nfsshare   #你创建的nfs目录
+
+---
+# PersistentVolumeClaim.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+ name: nfs-pvc
+spec:
+ accessModes:
+ - ReadWriteMany
+ resources:
+   requests:
+     storage: 1Gi
+```
+
+将`<nfs-server-ip>`替换为NFS服务器的IP地址。
+
+使用nfs配置示例：
+
 ```yaml
 apiVersion: v1
 kind: Deployment
@@ -197,7 +346,7 @@ spec:
 
 
 
-### 动态供应
+#### 动态供应
 
 即如果没有满足pvc条件的pv，会动态创建pv。相比静态供应，动态供应有明显的优势：不需要提前创建pv，减少了管理员的工作量，效率高。动态供应是通过StorageClass实现的，StorageClass定义了如何创建pv，但需要注意的是每个StorageClass都有一个制备器（Provisioner）用来决定使用哪个卷插件制备pv，该字段必须指定才能实现动态创建
 

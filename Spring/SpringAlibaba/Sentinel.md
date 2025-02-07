@@ -1,15 +1,20 @@
+# 部署
+
 [下载地址](https://github.com/alibaba/Sentinel/releases)
 
 下载下来是一个jar包，是一个spring应用，直接jar运行即可，可以添加环境变量`server.port=xxxx`改变端口，用户名密码都是`sentinel`，控制面板地址为`http://your-ip-address:port`
 
 在需要链接到Sentinel的服务中加上依赖
+
 ```xml title:pom.xml
 <dependency> 
 	<groupId>com.alibaba.cloud</groupId> 
 	<artifactId>spring-cloud-starter-alibaba-sentinel</artifactId> 
 </dependency>
 ```
+
 并在配置文件中添加
+
 ```yml
 spring: 
 	application: 
@@ -21,27 +26,65 @@ spring:
 		sentinel: 
 			transport: # 添加监控页面地址即可 
 				dashboard: localhost:8858
+			eager: true # 项目一启动就自动连接到控制台并列出资源而非懒加载
 			# 关闭Context收敛，这样被监控方法可以进行不同链路的单独控制
 			web-context-unify: false
 			# 将请求映射设定为限流页面
 			block-page: /blocked
 ```
 
-# 流量控制
+
+
+# 资源和规则
+
+资源定义：
+
+- 主流框架自动适配（Web Servlet、Dubbo、Spring Cloud、gRPC、Spring WebFlux、Reactor）所有web接口均为资源
+- 编程式：SphU API
+- 声明式：@SentinelResource（一般标注在非Controller中）
+
+规则定义：
+
+- [流量控制](#流量控制)（FlowRule）
+- [熔断降级](服务熔断和降级)（DegradeRule）
+- 系统保护（SystemRule）
+- 来源访问控制（AuthorityRule）
+- 热点参数（ParamFlowRule）
+
+
+
+Sentinel的工作流程如下
+
+![image-20250207164150124](./Sentinel.assets/image-20250207164150124.png)
+
+其中异常处理部分逻辑为
+
+![image-20250207164321597](./Sentinel.assets/image-20250207164321597.png)
+
+
+
+
+
+## 流量控制
+
 流量控制有三种模式：
-- [[#直接流控|直接]]
-- [[#关联流控|关联]]
-- [[#链路流量模式|链路]]
+- [直接](#直接流控)
+- [关联](#关联流控)
+- [链路](#链路流量模式)
 
-## 直接流控
-只针对当前接口
+### 直接流控
+只针对当前资源
 
-## 关联流控
-当其他接口超过阈值时， 会导致当前接口被限流
+### 关联流控
+当其他资源超过阈值时， 会导致当前资源被限流。比如说有读写两个资源，现在想要实现在写流量比较大时限制读。这时给读设置关联限流，关联资源设置为写，单机阈值自行指定。这样，当写触发到单机阈值时，读就会被限制。
 
-## 链路流量模式
-当从指定接口过来的资源请求达到限流条件时，开启限流
+当系统中出现资源竞争的时候一般设置关联流控。
+
+### 链路流量模式
+
+当从指定资源过来的资源请求达到限流条件时，开启限流
 可以对某一个方法进行限流控制，无论是谁在何处调用了它，这里需要使用到`@SentinelResource`，一旦方法被标注，那么就会进行监控，比如这里创建两个请求映射，都来调用Service的被监控方法：
+
 ```java title:Controller.java
 @RestController 
 public class BorrowController { 
@@ -75,40 +118,74 @@ public class BorrowServiceImpl implements BorrowService{
 }
 ```
 
+然后我们对`getBorrow`方法配置限流规则，然后将入口资源设置为`/borrow`，这时如果流量是从`/borrow`来就会被限流，从`/borrow2`来就不受限制
 
-## 限流和异常处理
-当被限流时，会重定向到这个页面
-配置文件指定block-page
-```java Controller.java
-@RequestMapping("/blocked") 
-JSONObject blocked(){ 
-	JSONObject object = new JSONObject(); 
-	object.put("code", 403); 
-	object.put("success", false); 
-	object.put("massage", "您的请求频率过快，请稍后再试！"); 
-	return object; 
+### 限流和异常处理
+
+**Web接口限流**
+
+假设此时没有配置`spring.cloud.sentinel.block-page`
+
+然后配置了某个Web接口的限流规则，此时如果触发了限流，就会走异常处理的第一个逻辑，我们可以使用`BlockExceptionHandler`来处理这种异常，例如：
+
+```java
+@Component
+public class MyBlockExceptionHandler implements BlockExceptionHandler {
+    @Resource
+    private ObjectMapper mapper;
+    
+    @Override
+    public void handle(HttpServletRequest httpServletRequest,
+                       HttpServletResponse httpServletResponse,
+                       String s,  // 资源名
+                       BlockException e) throws Exception {
+        httpServletResponse.setContentType("application/json;charset=UTF-8");
+        PrintWriter out = httpServletResponse.getWriter();
+        R<String> error = R.error(s + "被限制了，原因为：" + e.getClass());
+        out.write(mapper.writeValueAsString(error));
+        out.flush();
+        out.close();
+    }
 }
 ```
-然而，对于方法级别的限流，会直接在后台抛出异常，这种情况可以添加一个替代方案，当出现异常时会直接执行替代方案的方法并返回，比如还是在`getUserBorrowDetailByUid`方法上进行配置
-```java title:ServiceImpl.java
-@Override 
-@SentinelResource(value = "getBorrow", blockHandler = "blocked") //指定blockHandler，也就是被限流之后的替代解决方案，这样就不会使用默认的抛出异常的形式了 
-public UserBorrowDetail getUserBorrowDetailByUid(int uid) { 
-	List<Borrow> borrow = mapper.getBorrowsByUid(uid); 
-	User user = userClient.getUserById(uid); 
-	List<Book> bookList = borrow 
-							.stream() 
-							.map(b -> bookClient.getBookById(b.getBid())) 
-							.collect(Collectors.toList()); 
-	return new UserBorrowDetail(user, bookList); 
-} 
-//替代方案，注意参数和返回值需要保持一致，并且参数最后还需要额外添加一个BlockException 
-public UserBorrowDetail blocked(int uid, BlockException e) { 
-	return new UserBorrowDetail(null, Collections.emptyList()); 
+
+**@SentinelResource资源限流**
+
+如果是某个被标注了`@SentinelResource`的资源被限流，需要自定义异常处理，他的默认行为是如果注解中指定了`blockHandler`，则执行指定的方法，否则执行`fallback`的方法，如果`fallback`方法有指定，则执行指定方法，否则执行默认的`fallback`方法，如果默认的`fallback`方法也没有指定，则直接抛出异常。这里用指定`blockHandler`演示
+
+```java
+//比如某个@SentinelResource(value = "createOrder", blockHandler = "createOrderFallback")设置了blockHandler
+//这里的"createOrderFallback"是个方法名，要求与标注的方法除了方法名其余的全部一致，然后形参多加一个BlockException e用来反映
+@SentinelResource(value = "createOrder", blockHandler = "createOrderFallback")
+@Override
+public Order createOrder(Long productId, Long userId) {
+    Product product = productFeignClient.getProductById(productId);
+    Order order = new Order();
+    order.setId(1L);
+    order.setTotalAmount(new BigDecimal("0"));
+    order.setUserId(userId);
+    order.setNickName("张三");
+    order.setAddress("广州");
+    order.setProductList(List.of(product));
+
+    return order;
 }
-//这时一旦被限流执行替代方案，返回值就变成了{"user":null;"bookList":[]}
+
+// 兜底回调方法
+public Order createOrderFallback(Long productId, Long userId, BlockException e) {
+    Order order = new Order();
+    order.setId(0L);
+    order.setTotalAmount(new BigDecimal("0"));
+    order.setUserId(userId);
+    order.setNickName("未知用户");
+    order.setAddress("异常信息" + e.getClass());
+
+    return order;
+}
 ```
+
 注意`blockHandler`只能处理限流情况下抛出的异常，其他不属于限流情况的异常不会处理，但是可以通过其他参数进行处理，如：
+
 ```java title:ServiceImpl.java
 @RequestMapping("/test") 
 @SentinelResource(value = "test", 
@@ -119,10 +196,32 @@ String test(){ throw new RuntimeException("HelloWorld！"); }
 //替代方法必须和原方法返回值和参数一致，最后可以添加一个Throwable作为参数接受异常 
 String except(Throwable t){ return t.getMessage(); }
 ```
-这样，其他的异常也可以有替代方案了
+
 如果在`@SentinelResource`注解里同时添加`fallback`和`blockHandler`两个参数，则出现限流时走`blockHandler`，因为限流是在方法执行前进行的
 
-## 热点参数限流
+
+
+假设此时配置了`spring.cloud.sentinel.block-page: /blocked`，则被限流时，会重定向到这个页面
+
+```java Controller.java
+@RequestMapping("/blocked") 
+JSONObject blocked(){ 
+	JSONObject object = new JSONObject(); 
+	object.put("code", 403); 
+	object.put("success", false); 
+	object.put("massage", "您的请求频率过快，请稍后再试！"); 
+	return object; 
+}
+```
+
+
+**OpenFeign调用限流**
+
+如果是OpenFeign资源被限流了，会走`@FeignClient(name = "service-product", fallback = ProductFeignClientFallback.class)`中`fallback`的指定类中的兜底回调方法。如果没有则会抛出异常让SpringBoot全局异常类自行处理
+
+
+
+### 热点参数限流
 可以对某一热点数据进行精准限流，比如在某一时刻，不同参数被携带访问的频率是不一样的：
 - http://localhost:8301/test?a=10 访问100次
 - http://localhost:8301/test?b=10 访问0次
@@ -139,11 +238,30 @@ String findUserBorrows2(@RequestParam(value = "a", required = false) String a,
 ```
 然后在Sentinel里进行热点配置，这里参数`a`的索引为0
 在携带参数`a`时，当访问频率超过设定值，就会被限流，这里是直接在后台抛出异常，当不携带参数`a`或者携带其他参数就不会出现限流
-除了直接对某个参数精准限流外，还可以对参数携带的指定值单独设定阈值，比如现在不仅希望对参数`a`限流，而且还希望当参数`a`的值为10时，QPS达到5再进行限流，那么就可以设定例外：![[Pasted image 20240212172939.png]]
+除了直接对某个参数精准限流外，还可以对参数携带的指定值单独设定阈值，比如现在不仅希望对参数`a`限流，而且还希望当参数`a`的值为10时，QPS达到5再进行限流，那么就可以设定例外：![Pasted image 20240212172939](./Sentinel.assets/Pasted_image_20240212172939.png)
 
 
 
-# 服务熔断和降级
+
+
+## 流控效果
+
+### 快速失败
+
+
+
+### Warm Up
+
+
+
+### 排队等待
+
+
+
+
+
+## 服务熔断和降级
+
 如果在某一时刻，服务B出现故障（可能就卡在那里了），而这时服务A依然有大量的请求，在调用服务B，那么，由于服务A没办法再短时间内完成处理，新来的请求就会导致线程数不断地增加，这样，CPU的资源很快就会被耗尽。要防止这种情况，就只能进行隔离了。有两种隔离方案：
 - 线程池隔离
 - 信号量隔离
@@ -169,7 +287,7 @@ UserBorrowDetail findUserBorrows2(@PathVariable("uid") int uid) { throw new Runt
 UserBorrowDetail test(int uid, BlockException e){ return new UserBorrowDetail(new User(), Collections.emptyList()); }
 ```
 接着对进行熔断配置，注意是对添加的`@SentinelResource`中指定名称的`findUserBorrows2`进行配置
-![[Pasted image 20240212214123.png]]
+![Pasted image 20240212214123](./Sentinel.assets/Pasted_image_20240212214123.png)
 
 让Frign也支持Sentinel需要在配置文件中开启
 ```yml title:application.yml
