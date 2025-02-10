@@ -67,7 +67,7 @@ public class R<T> implements Serializable {
     private T data;  
   
     //整合TraceID  
-    //public String traceId = TraceIdUtils.getTraceId();   
+    //private final String traceId = TraceIdUtils.getTraceId();   
       
       
     /**  
@@ -89,7 +89,7 @@ public class R<T> implements Serializable {
     }  
   
     /**  
-     * 编译失败方法  
+     * 操作失败方法  
      */  
     public static <T> R<T> error() {  
         R<T> response = new R<>();  
