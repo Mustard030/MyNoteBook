@@ -1,7 +1,7 @@
 首先创建一个TraceIdUtils类
 ```java title:util/TraceIdUtils.java  
 import org.slf4j.MDC;  
-import org.apache.commons.lang3.StringUtils;  
+import cn.hutool.core.util.StrUtil;
 import java.util.UUID;  
   
 public class TraceIdUtils {  
@@ -18,7 +18,7 @@ public class TraceIdUtils {
     }  
   
     public static String generateTraceId(String traceId) {  
-        if (StringUtils.isBlank(traceId)){  
+        if (StrUtil.isBlank(traceId)){  
             return generateTraceId();  
         }  
         MDC.put(TRACE_ID_KEY, traceId);  
@@ -106,7 +106,9 @@ public FilterRegistrationBean<TraceFilter> traceFilterBean() {
 `public String traceId = TraceIdUtils.getTraceId();`
 
 
-# Async实现链路追踪
+
+# Async集成TraceID
+
 首先在主方法上加上`@EnableAsync`，并创建Executor，如：
 ```java
 //AsyncConfiguration.java
@@ -155,7 +157,7 @@ public class MdcTaskDecorator implements TaskDecorator {
             }catch (Exception e){  
                 e.printStackTrace();  
             }finally {  
-                MDC.clear();  
+                TraceIdUtils.removeTraceId();  
             }  
         };  
     }  
@@ -163,26 +165,337 @@ public class MdcTaskDecorator implements TaskDecorator {
 ```
 
 
-# RabbitMQ集成TraceID
-发送消息之前的前置增强
-```java
-template.setBeforePublishPostProcessors(message -> {  
-    message.getMessageProperties().setHeader(TraceIdUtils.TRACE_ID_KEY, TraceIdUtils.getTraceId());  
-    return message;  
-});
 
-//也可以单独抽出一个类实现MessagePostProcessor接口并实现postProcessMessage方法
+# OpenFeign集成TraceID
+
+添加拦截器
+
+```java
+import feign.RequestInterceptor;
+import feign.RequestTemplate;
+
+@Component
+public class TraceRequestInterceptor implements RequestInterceptor {
+    @Override
+    public void apply(RequestTemplate template) {
+        // 从ThreadLocal中获取traceId，放到feign请求头中，传给调用者
+        String traceId = TraceIdUtils.getTraceId();
+        template.header(TraceIdUtils.TRACE_ID_KEY, TraceIdUtils.generateTraceId(traceId););
+    }
+}
 ```
 
-消息接收之前的增强，利用AOP增强rabbitListener注解
-依赖：
+Spring 会自动将实现了 `RequestInterceptor` 接口的类注入到 OpenFeign 中，因此只需添加 `@Component` 注解即可。如果没有启用 Spring 自动装配，也可以手动配置：
+
 ```java
+@Configuration
+public class FeignConfig {
+
+    @Bean
+    public RequestInterceptor traceIdFeignInterceptor() {
+        return new TraceRequestInterceptor();
+    }
+}
+```
+
+
+
+
+
+# RestTemplate集成TraceID
+
+编写拦截器
+
+```java
+public class TraceRestTemplateInterceptor  implements ClientHttpRequestInterceptor {
+    
+    @Override
+    public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution) throws IOException {
+        // 在请求头中添加或更新Trace ID
+        String traceId = TraceIdUtils.getTraceId();
+        request.getHeaders().add(TraceIdUtils.TRACE_ID_KEY, TraceIdUtils.generateTraceId(traceId););
+        
+        // 执行请求
+        return execution.execute(request, body);
+    }
+}
+```
+
+添加拦截器
+
+```java
+@Configuration
+public class RestTemplateConfig {
+
+    /*
+    @Bean
+    public RestTemplate restTemplate() {
+        RestTemplate restTemplate = new RestTemplate();
+        restTemplate.getInterceptors().add(new TraceRestTemplateInterceptor());
+        return restTemplate;
+    }
+    */
+    
+    // 或者使用RestTemplateBuilder（推荐）
+    @Bean
+    public RestTemplate restTemplate(RestTemplateBuilder builder) {
+        return builder
+                .additionalInterceptors(new TraceRestTemplateInterceptor())
+                .build();
+    }
+}
+```
+
+
+
+# RabbitMQ集成TraceID
+
+## 生产者端
+
+**方式一：使用自定义 `RabbitTemplate` 的 `BeforePublishPostProcessors`**
+
+`RabbitTemplate` 提供了 `BeforePublishPostProcessors`，可以在消息发送前统一处理消息，比如添加 `TraceId` 到消息头。
+
+```java
+@Configuration
+public class RabbitMqConfig {
+
+    @Bean
+    public RabbitTemplate rabbitTemplate(RabbitTemplate rabbitTemplate) {
+        rabbitTemplate.addBeforePublishPostProcessors(traceIdPostProcessor());
+        return rabbitTemplate;
+    }
+
+    @Bean
+    public MessagePostProcessor traceIdPostProcessor() {
+        return message -> {
+            // 从 MDC 获取 TraceId 并添加到消息头
+            String traceId = TraceIdUtils.getTraceId();
+            
+            message.getMessageProperties().getHeaders().put(TraceIdUtils.TRACE_ID_KEY, TraceIdUtils.generateTraceId(traceId));
+            
+            return message;
+        };
+    }
+}
+```
+
+
+
+**方式二：使用 `CustomMessageConverter`**
+
+编写消息转换器
+
+```java
+public class TraceIdMessageConverter implements MessageConverter {
+    private final MessageConverter delegate = new SimpleMessageConverter();
+
+    @Override
+    public Message toMessage(Object object, MessageProperties messageProperties) {
+        // 从 MDC 获取 TraceId 并添加到消息头
+        String traceId = TraceIdUtils.getTraceId();
+        messageProperties.setHeader(TraceIdUtils.TRACE_ID_KEY, TraceIdUtils.generateTraceId(traceId));
+        
+        return delegate.toMessage(object, messageProperties);
+    }
+
+    @Override
+    public Object fromMessage(Message message) {
+        return delegate.fromMessage(message);
+    }
+}
+```
+
+配置`MessageConverter`
+
+```java
+@Configuration
+public class RabbitMqConfig {
+
+    @Bean
+    public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
+        RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
+        rabbitTemplate.setMessageConverter(new TraceIdMessageConverter());
+        return rabbitTemplate;
+    }
+}
+```
+
+**对比两种方法**
+
+| 方法                          | 优点                                                         | 适用场景                                           |
+| ----------------------------- | ------------------------------------------------------------ | -------------------------------------------------- |
+| `BeforePublishPostProcessors` | 简单易用，支持多个消息处理器链，适合在现有项目中快速集成     | 希望在发送消息前添加其他统一逻辑（如加密、压缩等） |
+| 自定义 `MessageConverter`     | 更灵活，可以直接控制消息的序列化和反序列化，适合需要统一定制消息格式的场景 | 需要对消息内容和头进行深度控制的场景               |
+
+
+
+## 消费者端
+
+**方式一：使用自定义 `MessageListener`**
+
+自定义 `MessageListenerAdapter`
+
+```java
+public class TraceIdMessageListenerAdapter extends MessageListenerAdapter {
+    @Override
+    public void onMessage(Message message) {
+        String traceId = (String) message.getMessageProperties().getHeaders().get(TraceIdUtils.TRACE_ID_KEY);
+
+        try {
+            // 将 TraceId 放入 MDC
+            TraceIdUtils.generateTraceId(traceId)
+
+            // 调用原来的消息处理逻辑
+            super.onMessage(message);
+        } finally {
+            // 清理 MDC
+            TraceIdUtils.removeTraceId();
+        }
+    }
+}
+```
+
+配置 `SimpleMessageListenerContainer`
+
+```java
+@Configuration
+public class RabbitMqConsumerConfig {
+
+    @Bean
+    public SimpleMessageListenerContainer messageListenerContainer(ConnectionFactory connectionFactory) {
+        SimpleMessageListenerContainer container = new SimpleMessageListenerContainer();
+        container.setConnectionFactory(connectionFactory);
+        container.setQueueNames("your-queue-name"); // 替换为你的队列名
+
+        // 使用自定义的 MessageListenerAdapter
+        container.setMessageListener(new TraceIdMessageListenerAdapter());
+        return container;
+    }
+}
+```
+
+
+
+**方式二：使用自定义 `Advice`**
+
+Spring AMQP 提供了一个 `Advice` 机制，允许消息处理之前或之后执行额外的逻辑。
+
+自定义`MethodInterceptor`
+
+```java
+public class TraceIdInterceptor implements MethodInterceptor {
+    @Override
+    public Object invoke(MethodInvocation invocation) throws Throwable {
+        Message message = (Message) invocation.getArguments()[1]; // 获取 Message
+        String traceId = (String) message.getMessageProperties().getHeaders().get(TraceIdUtils.TRACE_ID_KEY);
+
+        try {
+            // 将 TraceId 放入 MDC
+            TraceIdUtils.generateTraceId(traceId);
+
+            // 执行实际的消息处理逻辑
+            return invocation.proceed();
+        } finally {
+            // 清理 MDC
+            TraceIdUtils.removeTraceId();
+        }
+    }
+}
+```
+
+配置 `SimpleMessageListenerContainer` 与 `Advice`
+
+```java
+@Configuration
+public class RabbitMqConsumerConfig {
+
+    @Bean
+    public SimpleMessageListenerContainer messageListenerContainer(ConnectionFactory connectionFactory) {
+        SimpleMessageListenerContainer container = new SimpleMessageListenerContainer();
+        container.setConnectionFactory(connectionFactory);
+        container.setQueueNames("your-queue-name"); // 替换为你的队列名
+
+        // 设置 Advice
+        container.setAdviceChain(traceIdAdvice());
+        return container;
+    }
+
+    @Bean
+    public TraceIdInterceptor traceIdAdvice() {
+        return new TraceIdInterceptor();
+    }
+}
+```
+
+**方式三：使用消息转换器处理 `TraceId`**
+
+如果你的消费者已经使用了自定义的 `MessageConverter` 来处理消息体的反序列化，也可以在消息转换时提取并设置 `TraceId`。
+
+自定义 `MessageConverter`
+
+```java
+public class TraceIdAwareMessageConverter implements MessageConverter {
+    private final MessageConverter delegate = new SimpleMessageConverter();
+
+    @Override
+    public Message toMessage(Object object, MessageProperties messageProperties) {
+        return delegate.toMessage(object, messageProperties);
+    }
+
+    @Override
+    public Object fromMessage(Message message) {
+        String traceId = (String) message.getMessageProperties().getHeaders().get(TraceIdUtils.TRACE_ID_KEY);
+
+        // 将 TraceId 放入 MDC
+        TraceIdUtils.generateTraceId(traceId);
+
+        try {
+            return delegate.fromMessage(message);
+        } finally {
+            // 清理 MDC
+            TraceIdUtils.removeTraceId();
+        }
+    }
+}
+```
+
+配置自定义 `MessageConverter`
+
+```java
+@Configuration
+public class RabbitMqConsumerConfig {
+
+    @Bean
+    public SimpleMessageListenerContainer messageListenerContainer(ConnectionFactory connectionFactory) {
+        SimpleMessageListenerContainer container = new SimpleMessageListenerContainer();
+        container.setConnectionFactory(connectionFactory);
+        container.setQueueNames("your-queue-name"); // 替换为你的队列名
+
+        MessageListenerAdapter listenerAdapter = new MessageListenerAdapter();
+        listenerAdapter.setMessageConverter(new TraceIdAwareMessageConverter());
+        container.setMessageListener(listenerAdapter);
+
+        return container;
+    }
+}
+```
+
+
+
+**方式四：直接用AOP对rabbitListener注解增强**
+
+依赖：
+
+```xml
 <dependency>
 	<groupId>org.springframework.boot</groupId>
 	<artifactId>spring-boot-starter-aop</artifactId>
 </dependency>
 ```
+
 切面类：
+
 ```java
 @Slf4j  
 @Aspect  
@@ -197,7 +510,7 @@ public class MqTraceIdAspect {
                 Message message = (Message) arg;  
                 Map<String, Object> header = message.getMessageProperties().getHeaders();  
                 String traceId = (String) header.get(TraceIdUtils.TRACE_ID_KEY);  
-                MDC.put(TraceIdUtils.TRACE_ID_KEY, traceId);  
+                TraceIdUtils.generateTraceId(traceId);  
             }  
         }  
         try {  
@@ -212,7 +525,30 @@ public class MqTraceIdAspect {
 ```
 
 
+
+
+
+
+
+**总结**
+
+| 方法                            | 优点                                                    | 使用场景                                        |
+| ------------------------------- | ------------------------------------------------------- | ----------------------------------------------- |
+| 自定义 `MessageListenerAdapter` | 简单直接，适合需要对所有消费者统一处理 `TraceId` 的场景 | 仅需要为消费者添加额外逻辑的场景                |
+| 使用 `Advice`                   | 灵活可扩展，可以加入更多的切面逻辑                      | 需要对消息消费前后的流程进行更复杂的控制的场景  |
+| 自定义 `MessageConverter`       | 集成性强，适合同时对消息体和 `TraceId` 进行统一处理     | 需要定制消息体格式，同时对 `TraceId` 处理的场景 |
+
+------
+
+**推荐方案：**
+
+- 如果只是简单地添加 `TraceId` 处理逻辑，建议使用 **自定义 `MessageListenerAdapter`**。
+- 如果需要对消息体进行深度定制，或者有复杂的消息消费逻辑，建议使用 **自定义 `MessageConverter`** 或 **Advice**。
+
+
+
 # Kafka集成TraceID
+
 编写拦截器：
 ```java
 public class TraceWebInterceptor extends HandlerInterceptorAdapter {
