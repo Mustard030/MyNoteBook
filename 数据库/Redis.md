@@ -397,12 +397,13 @@ unwatch --取消监视可以使用
 
 ```yml title:application.yml
 spring:
-	data:
-		redis:
-			host: localhost
-			port: 6379
-			database: 0
+    data:
+        redis:
+            host: localhost
+            port: 6379
+            database: 0
 ```
+> Spring2的路径是：spring.redis, Spring3是spring.data.redis
 
 使用模板：
 ```java
