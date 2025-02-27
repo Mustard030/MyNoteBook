@@ -62,3 +62,37 @@ Location: /api/orders/524694
 ```
 
 客户端随后访问 GET `/api/orders/524694`，返回任务处理结果
+
+**实现：**
+创建一个管理类用于存储任务和任务ID的关系
+```java
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+public class TaskManager {
+	// 这里可以直接注入创建好的
+    private ExecutorService executor = Executors.newFixedThreadPool(10);
+	private ConcurrentHashMap<String, Future<?>> taskMap = new ConcurrentHashMap<>();
+	
+	public String submitTask(Runnable task) {
+        String taskId = generateTaskId();
+        Future<?> future = executor.submit(task);
+        taskMap.put(taskId, future);
+        return taskId;
+    }
+
+	public void cancelTask(String taskId) {
+        Future<?> future = taskMap.get(taskId);
+        if (future != null) {
+            future.cancel(true);
+            taskMap.remove(taskId);
+        }
+    }
+    
+	private String generateTaskId() {
+		// 自行实现
+        return "task-" + System.currentTimeMillis();
+    }
+}
+```
