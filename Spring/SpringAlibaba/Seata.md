@@ -1,6 +1,19 @@
 [官方文档](https://seata.io/zh-cn/docs/overview/what-is-seata.html)
 在分布式环境下实现事务
 
+在父工程引入了cloud-alibaba相关依赖管理后，在微服务中引入
+依赖：
+```xml
+<dependency>  
+    <groupId>com.alibaba.cloud</groupId>  
+    <artifactId>spring-cloud-starter-alibaba-seata</artifactId>  
+</dependency>
+```
+使用：
+添加file.conf
+
+在入口service中打上注解`@GlobalTransactional`
+
 ### 分布式事务解决方案
 
 要开始实现分布式事务，我们得先从理论上开始下手，我们来了解一下常用的分布式事务解决方案。
