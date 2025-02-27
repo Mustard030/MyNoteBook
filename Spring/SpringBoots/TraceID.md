@@ -5,7 +5,7 @@ import cn.hutool.core.util.StrUtil;
 import java.util.UUID;  
   
 public class TraceIdUtils {  
-    public static String TRACE_ID_KEY = "TraceId";  
+    public static final String TRACE_ID_KEY = "TraceId";  
   
     /**  
      * 生成TraceId  
@@ -54,9 +54,122 @@ public class TraceIdUtils {
 </appender>
 ...
 ```
+这里给一个logback的模板
+```xml
+<?xml version="1.0" encoding="UTF-8"?>  
+<configuration>  
+    <!-- 日志存放路径 -->  
+    <property name="log.path" value="./logs" />  
+    <!-- 日志输出格式 -->  
+    <!-- 举例：2025-01-23 15:42:47.609 [http-nio-8080-exec-1] INFO  c.v.a.s.t.i.TransformerServiceImpl - [getTransformerTree,53] - 对象转换 -->  
+    <!-- <property name="log.pattern" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{20} - [%method,%line] - %msg%n" /> -->    <!-- 举例：2025-01-24 09:51:41.610 [http-nio-8080-exec-2] [TraceId:ff94035e917c4c76ada38446751b44c4] INFO  - [getTransformerTree,53] - 对象转换 -->  
+    <property name="log.pattern" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [TraceId:%X{TraceId}] %-5level - [%method,%line] - %msg%n" />  
+  
+    <!-- 控制台输出 -->  
+    <appender name="console" class="ch.qos.logback.core.ConsoleAppender">  
+        <encoder>  
+            <pattern>${log.pattern}</pattern>  
+        </encoder>  
+    </appender>  
+  
+    <!-- 系统日志输出 -->  
+    <appender name="file_info" class="ch.qos.logback.core.rolling.RollingFileAppender">  
+        <file>${log.path}/vcmy-info.log</file>  
+        <!-- 循环政策：基于时间创建日志文件 -->  
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">  
+            <!-- 日志文件名格式 -->  
+            <fileNamePattern>${log.path}/vcmy-info.%d{yyyy-MM-dd}.log</fileNamePattern>  
+            <!-- 日志最大的历史 60天 -->  
+            <maxHistory>60</maxHistory>  
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>  
+        </rollingPolicy>  
+        <encoder>  
+            <pattern>${log.pattern}</pattern>  
+        </encoder>  
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">  
+            <!-- 过滤的级别 -->  
+            <level>INFO</level>  
+            <!-- 匹配时的操作：接收（记录） -->  
+            <onMatch>ACCEPT</onMatch>  
+            <!-- 不匹配时的操作：拒绝（不记录） -->  
+            <onMismatch>DENY</onMismatch>  
+        </filter>  
+    </appender>  
+  
+    <appender name="file_error" class="ch.qos.logback.core.rolling.RollingFileAppender">  
+        <file>${log.path}/vcmy-error.log</file>  
+        <!-- 循环政策：基于时间创建日志文件 -->  
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">  
+            <!-- 日志文件名格式 -->  
+            <fileNamePattern>${log.path}/vcmy-error.%d{yyyy-MM-dd}.log</fileNamePattern>  
+            <!-- 日志最大的历史 60天 -->  
+            <maxHistory>60</maxHistory>  
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>  
+        </rollingPolicy>  
+        <encoder>  
+            <pattern>${log.pattern}</pattern>  
+        </encoder>  
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">  
+            <!-- 过滤的级别 -->  
+            <level>ERROR</level>  
+            <!-- 匹配时的操作：接收（记录） -->  
+            <onMatch>ACCEPT</onMatch>  
+            <!-- 不匹配时的操作：拒绝（不记录） -->  
+            <onMismatch>DENY</onMismatch>  
+        </filter>  
+    </appender>  
+  
+    <!-- 用户访问日志输出  -->  
+    <appender name="vcmy-user" class="ch.qos.logback.core.rolling.RollingFileAppender">  
+        <file>${log.path}/vcmy-user.log</file>  
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">  
+            <!-- 按天回滚 daily -->            <fileNamePattern>${log.path}/vcmy-user.%d{yyyy-MM-dd}.log</fileNamePattern>  
+            <!-- 日志最大的历史 60天 -->  
+            <maxHistory>60</maxHistory>  
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>  
+        </rollingPolicy>  
+        <encoder>  
+            <pattern>${log.pattern}</pattern>  
+        </encoder>  
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">  
+            <!-- 过滤的级别 -->  
+            <level>DEBUG</level>  
+            <!-- 匹配时的操作：接收（记录） -->  
+            <onMatch>ACCEPT</onMatch>  
+            <!-- 不匹配时的操作：拒绝（不记录） -->  
+            <onMismatch>DENY</onMismatch>  
+        </filter>  
+    </appender>  
+  
+    <!-- 系统模块日志级别控制  -->  
+    <logger name="com.vcmy" level="debug">  
+        <!--系统用户操作日志-->  
+        <appender-ref ref="vcmy-user"/>  
+    </logger>  
+    <!-- Spring日志级别控制  -->  
+    <logger name="org.springframework" level="warn" />  
+  
+    <root level="debug">  
+        <appender-ref ref="console" />  
+    </root>  
+  
+    <!--系统操作日志-->  
+    <root level="info">  
+        <appender-ref ref="file_info" />  
+        <appender-ref ref="file_error" />  
+    </root>  
+  
+</configuration>
+```
 
 创建一个Filter用于过滤所有的请求
 ```java title:TraceFilter.java
+import lombok.extern.slf4j.Slf4j;  
+  
+import javax.servlet.*;  
+import javax.servlet.http.HttpServletRequest;  
+import java.io.IOException;
+
 @Slf4j  
 public class TraceFilter implements Filter {  
   
