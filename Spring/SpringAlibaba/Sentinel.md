@@ -184,7 +184,7 @@ public Order createOrderFallback(Long productId, Long userId, BlockException e) 
 }
 ```
 
-注意`blockHandler`只能处理限流情况下抛出的异常，其他不属于限流情况的异常不会处理，但是可以通过其他参数进行处理，如：
+注意`blockHandler`只能处理限流情况下抛出的异常，其他不属于限流情况的异常不会处理，但是可以通过其他参数进行处理，如果设置的是fallback则可以同时处理限流和业务异常，最后的参数类型需要变更为Throwable：
 
 ```java title:ServiceImpl.java
 @RequestMapping("/test") 
@@ -193,7 +193,7 @@ public Order createOrderFallback(Long productId, Long userId, BlockException e) 
 				  exceptionsToIgnore = IOException.class) //忽略那些异常，也就是说这些异常出现时不使用替代方案 
 String test(){ throw new RuntimeException("HelloWorld！"); } 
 
-//替代方法必须和原方法返回值和参数一致，最后可以添加一个Throwable作为参数接受异常 
+//替代方法必须和原方法返回值和参数一致，最后需要添加一个Throwable作为参数接受异常 
 String except(Throwable t){ return t.getMessage(); }
 ```
 
@@ -248,15 +248,22 @@ String findUserBorrows2(@RequestParam(value = "a", required = false) String a,
 
 ### 快速失败
 
-
+超出阈值请求直接丢弃。注意：只有快速失败支持流控模式（直接流控、关联流控、链路）的设置
 
 ### Warm Up
 
+逐步增加QPS以适应高QPS请求。两个设置：
 
+- QPS：最高限制，冷启动最初会先从这个值的1/n作为限制，逐步增加到达最高限制
+- Period：冷启动周期n秒
 
 ### 排队等待
 
+漏桶算法实现
 
+QPS=2，每秒两个，每个500ms，因此不支持QPS>1000
+
+timeout=20s，对每个请求而言，等待超过20s还没排到再丢弃
 
 
 
