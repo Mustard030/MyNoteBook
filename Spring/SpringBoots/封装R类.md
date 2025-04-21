@@ -87,7 +87,15 @@ public class R<T> implements Serializable {
         response.setData(data);  
         return response;  
     }  
-  
+	
+	public static <T> R<T> ok(String msg, T data) {  
+        R<T> response = new R<>();  
+        response.setCode(ResponseConstantEnum.SUCCESS.getResultCode());  
+        response.setMessage(msg);  
+        response.setData(data);  
+        return response;  
+    }  
+	  
     /**  
      * 操作失败方法  
      */  
