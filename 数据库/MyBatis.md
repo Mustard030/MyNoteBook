@@ -244,7 +244,10 @@ public class User {
 ```
 首先定义sql语句
 ```sql
-select * from user left join book on user.id = book.uid where user.id = #{id}
+select * 
+from user 
+left join book on user.id = book.uid 
+where user.id = #{id}
 ```
 此时的`resultMap`里面用的是`collection`
 ```xml
@@ -635,6 +638,12 @@ public class MybatisPlusConfig {
 
 建立一个字段`optimisticLockVersion`，并加上`@Version`。
 
+如果是自定义的更新语句，则必须传入整个实体类且含有乐观锁字段才能自动更新，又或者手动处理更新
+```java
+@Update("UPDATE user SET name = #{name}, version = version + 1 WHERE id = #{id} AND version = #{version}")
+int updateById(User user);
+```
+
 **注意：**
 
 - version字段仅支持`int`、`Integer`、`long`、`Long`、`Date`、`Timestamp`、`LocalDateTime`类型
@@ -932,6 +941,242 @@ public @interface Master { }
 这样会更方便些，但是baomidou也有一个这样的实现，但是他固定了名字，如果还是用master、slave可以用他的注解，名字不一样就自己封装一个
 
 
+## 自定义字符转义拦截器
+```java
+import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
+import com.baomidou.mybatisplus.extension.plugins.inner.InnerInterceptor;
+import com.vcmy.infrastructure.common.annotation.LikeEscape;
+import lombok.NoArgsConstructor;
+import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.binding.MapperMethod;
+import org.apache.ibatis.executor.Executor;
+import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.mapping.MappedStatement;
+import org.apache.ibatis.session.ResultHandler;
+import org.apache.ibatis.session.RowBounds;
+import org.springframework.util.StringUtils;
+
+import javax.annotation.PostConstruct;
+import java.lang.reflect.*;
+import java.util.*;
+
+/**
+ * 支持字符串 LIKE 转义的 MyBatis Plus 拦截器
+ */
+@Slf4j
+@NoArgsConstructor
+public class CharEscapeInnerInterceptor implements InnerInterceptor {
+
+    private CharEscape charEscape = new CharEscapeImpl();
+
+    public CharEscapeInnerInterceptor(CharEscape charEscape) {
+        this.charEscape = charEscape;
+    }
+
+    @PostConstruct
+    public void init() {
+        log.info("CharEscapeInnerInterceptor initialized");
+    }
+
+    @Override
+    @SneakyThrows
+    @SuppressWarnings("unchecked")
+    public void beforeQuery(Executor executor, MappedStatement ms, Object parameter,
+                            RowBounds rowBounds, ResultHandler resultHandler, BoundSql boundSql) {
+        if (parameter == null) return;
+
+        if (parameter instanceof MapperMethod.ParamMap) {
+            MapperMethod.ParamMap<Object> map = (MapperMethod.ParamMap<Object>) parameter;
+            for (Map.Entry<String, Object> entry : map.entrySet()) {
+                String paramName = entry.getKey();
+                Object value = entry.getValue();
+
+                // 方法参数注解优先级高
+                LikeEscape likeEscape = getLikeEscapeAnnotation(ms, paramName);
+                if (likeEscape != null && value instanceof String) {
+                    String escaped = wrapWithLikeMode(charEscape.charEscape((String) value), likeEscape.mode());
+                    map.put(paramName, escaped);
+                    continue;
+                }
+
+                if (value instanceof AbstractWrapper) {
+                    AbstractWrapper<?, ?, ?> wrapper = (AbstractWrapper<?, ?, ?>) value;
+                    getObjCharEscape(wrapper.getParamNameValuePairs());
+                    getObjCharEscape(wrapper.getEntity());
+                }
+
+                getObjCharEscape(value); // DTO 字段处理
+            }
+        } else {
+            getObjCharEscape(parameter);
+        }
+    }
+
+    /**
+     * 自动处理对象的字段（递归）
+     */
+    @SuppressWarnings("unchecked")
+    public Object getObjCharEscape(Object object) throws Exception {
+        if (object == null || object instanceof Long) return object;
+
+        if (object instanceof String) return object;
+
+        if (object instanceof Map) {
+            Map<Object, Object> map = (Map<Object, Object>) object;
+            for (Map.Entry<Object, Object> entry : map.entrySet()) {
+                map.put(entry.getKey(), getObjCharEscape(entry.getValue()));
+            }
+            return map;
+        }
+
+        if (object instanceof Collection) {
+            for (Object item : (Collection<?>) object) {
+                getObjCharEscape(item);
+            }
+            return object;
+        }
+
+        for (Field field : object.getClass().getDeclaredFields()) {
+            boolean accessible = field.isAccessible();
+            field.setAccessible(true);
+
+            if (Modifier.isFinal(field.getModifiers()) || field.get(object) == null) {
+                continue;
+            }
+
+            Object fieldValue = field.get(object);
+
+            if (field.isAnnotationPresent(LikeEscape.class) && fieldValue instanceof String) {
+                LikeEscape annotation = field.getAnnotation(LikeEscape.class);
+                String escaped = wrapWithLikeMode(charEscape.charEscape((String) fieldValue), annotation.mode());
+                field.set(object, escaped);
+            } else {
+                getObjCharEscape(fieldValue); // 递归子对象
+            }
+
+            field.setAccessible(accessible);
+        }
+
+        return object;
+    }
+
+    /**
+     * 获取 Mapper 方法参数上的注解
+     */
+    private LikeEscape getLikeEscapeAnnotation(MappedStatement ms, String paramName) {
+        try {
+            String mapperClassName = ms.getId().substring(0, ms.getId().lastIndexOf('.'));
+            String methodName = ms.getId().substring(ms.getId().lastIndexOf('.') + 1);
+            Class<?> mapperClass = Class.forName(mapperClassName);
+
+            for (Method method : mapperClass.getMethods()) {
+                if (!method.getName().equals(methodName)) continue;
+
+                Parameter[] parameters = method.getParameters();
+                for (Parameter parameter : parameters) {
+                    if (!parameter.isAnnotationPresent(LikeEscape.class)) continue;
+
+                    if (parameter.isAnnotationPresent(Param.class)) {
+                        String realName = parameter.getAnnotation(Param.class).value();
+                        if (realName.equals(paramName)) {
+                            return parameter.getAnnotation(LikeEscape.class);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("getLikeEscapeAnnotation failed: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * 根据模糊模式拼接 %
+     */
+    private String wrapWithLikeMode(String value, LikeEscape.Mode mode) {
+        switch (mode) {
+            case ALL: return "%" + value + "%";
+            case LEFT: return "%" + value;
+            case RIGHT: return value + "%";
+            default: return value;
+        }
+    }
+
+    /**
+     * 字符转义器接口
+     */
+    public interface CharEscape {
+        String charEscape(String charString);
+    }
+
+    /**
+     * 默认实现：LIKE 参数中的 \、% 和 _ 都会转义
+     */
+    private static class CharEscapeImpl implements CharEscape {
+        @Override
+        public String charEscape(String charString) {
+            if (!StringUtils.hasLength(charString)) return charString;
+            charString = charString.trim();
+            return charString
+                    .replace("\\", "\\\\")
+                    .replace("%", "\\%")
+                    .replace("_", "\\_");
+        }
+    }
+}
+```
+
+配套的注解
+```java
+import java.lang.annotation.*;
+
+@Target({ElementType.FIELD, ElementType.PARAMETER})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+public @interface LikeEscape {
+
+    /** 模糊匹配类型：前缀、后缀、全模糊 */
+    Mode mode() default Mode.ALL;
+
+    enum Mode {
+        /** %xxx% */
+        ALL,
+
+        /** xxx% */
+        RIGHT,
+
+        /** %xxx */
+        LEFT,
+
+        /** 不拼接 %，仅转义 */
+        NONE
+    }
+}
+```
+
+添加这个拦截器
+```java
+@Configuration  
+@EnableTransactionManagement  
+public class MybatisPlusConfig {  
+  
+    @Bean  
+    public MybatisPlusInterceptor mybatisPlusInterceptor() {  
+        MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();  
+        // 根据实际使用的数据库类型选择  
+        PaginationInnerInterceptor paginationInnerInterceptor = new PaginationInnerInterceptor(DbType.DM);  
+        paginationInnerInterceptor.setMaxLimit(1000L);  
+        interceptor.addInnerInterceptor(paginationInnerInterceptor);  
+        // 乐观锁版本拦截，使用时传参需要加上版本号  
+        interceptor.addInnerInterceptor(new OptimisticLockerInnerInterceptor());  
+        // 字符转义拦截器  
+        interceptor.addInnerInterceptor(new CharEscapeInnerInterceptor());  
+        return interceptor;  
+    }  
+}
+```
 
 ## **代码生成器**
 直接从Mapper到Controller直接全部生成好
