@@ -186,7 +186,8 @@ cat <<EOF | sudo tee /etc/docker/daemon.json
         "https://docker.unsee.tech/",
         "https://docker.1panel.live/",
         "https://docker.udayun.com/",
-        "https://docker.nastool.de/"
+        "https://docker.nastool.de/",
+        "https://docker.m.daocloud.io"
 	],
 	"exec-opts": ["native.cgroupdriver=systemd"],
     "log-driver": "json-file",
