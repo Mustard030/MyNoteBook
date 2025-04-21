@@ -576,16 +576,39 @@ cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
 br_netfilter
 EOF
 
+modprobe br_netfilter
+
 cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
 net.bridge.bridge-nf-call-ip6tables = 1
 net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+vm.swappiness = 0
 EOF
 
 sudo sysctl --system
 
 #设置时间同步
-yum install ntpdate -y
-ntpdate time.windows.com
+systemctl status chronyd
+chronyc tracking
+# 如果没安装chrony
+yum -y install chrony
+systemctl start chronyd
+systemctl enable chronyd
+
+#安装ipset工具
+yum install ipset ipvsadm -y
+cat << EOF > /etc/sysconfig/modules/ipvs.modules
+#!/bin/bash
+modprobe -- ip_vs
+modprobe -- ip_vs_rr
+modprobe -- ip_vs_wrr
+modprobe -- ip_vs_sh
+modprobe -- nf_conntrack
+EOF
+
+chmod +x /etc/sysconfig/modules/ipvs.modules
+bash /etc/sysconfig/modules/ipvs.modules
+lsmod | grep -e ip_vs -e nf_conntrack
 ```
 
 ### 1.3 安装kubelet、kubeadm、kubectl
@@ -600,7 +623,6 @@ gpgcheck=0
 repo_gpgcheck=0
 gpgkey=http://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg
    http://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg
-exclude=kubelet kubeadm kubectl
 EOF
 
 #如果之前安装过k8s，先卸载旧的
@@ -611,6 +633,10 @@ yum list kubelet --showduplicates | sort -r
 
 #安装 kubelet，kubeadm，kubectl指定版本，我们使用kubeadm方式安装k8s集群
 sudo yum install -y kubelet-1.20.9 kubeadm-1.20.9 kubectl-1.20.9 --disableexcludes=kubernetes
+
+#配置kubelet
+vim /etc/sysconfig/kubelet
+KUBELET_EXTRA_ARGS=--cgroup-driver=systemd
 
 #开机启动kubelet
 sudo systemctl enable kubelet --now
@@ -636,6 +662,10 @@ done
 EOF
 
 chmod +x ./images.sh && ./images.sh
+```
+或者使用这种方式
+```bash
+kubeadm config images pull --images-repository registry.aliyuncs.com/google_containers --cri-socket=unix:///var/run/cri-dockerd.sock
 ```
 #### 1.4.2 初始化主节点
 ```bash
@@ -765,14 +795,14 @@ uname -a
 其他的步骤基本和上述一致，主要是在高版本下要使用docker容器，还要额外安装一个东西cri-dockerd (所有节点)
 ```bash
 #https://pithub.com/Mirantis/cri-dockerd/releases
-wget https://github.com/Mirantis/cri-dockerd/releases/download/ve.3.1/cri-dockerd-0.3.1-3.e17.x86_64.rpm
-rpm ivh cri-dockerd-0.3.1-3.e17.x86_64.rpm
+wget https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.1/cri-dockerd-0.3.1-3.el7.x86_64.rpm
+rpm ivh cri-dockerd-0.3.1-3.el7.x86_64.rpm
 #修改/usr/lib/systemd/system/cri-docker.service文件中的ExecStart配置
 vim /usr/lib/systemd/system/cri-docker.service
 
-Execstart=/usr/bin/cri-dockerd --network-plugin=cni --pod-infra-container-image=registry.aliyuncs.com/google_containe
+Execstart=/usr/bin/cri-dockerd --network-plugin=cni --pod-infra-container-image=registry.aliyuncs.com/google_containers/pause:3.9 --container-runtime-endpoint fd://
 
 systemctl daemon-reload
-systemctl enable --now cri-docker
+systemctl start cri-docker && systemctl enable --now cri-docker
 ```
 
