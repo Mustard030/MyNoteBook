@@ -100,3 +100,60 @@ knife4j:
 ```
 
 访问`http://ip:port/doc.html`
+
+可以添加一个服务启动监听器
+```java
+@Component  
+@Slf4j  
+public class ServiceStartupListener implements ApplicationListener<ApplicationReadyEvent> {  
+    private static final String URL_SUFFIX = "/doc.html";  
+  
+    /**  
+     * 监听服务启动完成  
+     *  
+     * @param event 监听事件  
+     */  
+    @Override  
+    public void onApplicationEvent(ApplicationReadyEvent event) {  
+        Environment environment = event.getApplicationContext().getEnvironment();  
+        logApplicationStartup(environment);  
+    }  
+          
+private static void logApplicationStartup(Environment env) {  
+        String protocol = "http";  
+        if (env.getProperty("server.ssl.key-store") != null) {  
+            protocol = "https";  
+        }  
+        String serverPort = env.getProperty("server.port");  
+        String contextPath = env.getProperty("server.servlet.context-path");  
+        if (CharSequenceUtil.isBlank(contextPath)) {  
+            contextPath = URL_SUFFIX;  
+        } else {  
+            contextPath = contextPath + URL_SUFFIX;  
+        }  
+        String hostAddress = "localhost";  
+        try {  
+            hostAddress = InetAddress.getLocalHost().getHostAddress();  
+        } catch (UnknownHostException e) {  
+            log.warn("The host name could not be determined, using `localhost` as fallback");  
+        }  
+        log.info(String.format(  
+                "\n----------------------------------------------------------" +  
+                        "\n\t应用程序“%s”正在运行中......" +  
+                        "\n\t接口文档访问 URL:" +  
+                        "\n\t本地: \t%s://localhost:%s%s" +  
+                        "\n\t外部: \t%s://%s:%s%s" +  
+                        "\n\t配置文件: \t%s" +  
+                        "\n----------------------------------------------------------",  
+                env.getProperty("spring.application.name"),  
+                protocol,  
+                serverPort,  
+                contextPath,  
+                protocol,  
+                hostAddress,  
+                serverPort,  
+                contextPath,  
+                String.join(", ", env.getActiveProfiles())));  
+    }  
+}
+```
