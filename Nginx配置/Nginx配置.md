@@ -252,19 +252,66 @@ server {
 }
 
 ```
-其中，关于`location`后的路径匹配规则，如果`proxy_pass`端口后面跟路径，该路径就会替换`location`中的路径，有`/`也会替换，没加路径就只会替换访问路径的ip和端口，并且拼接上`location`后面的路径。
-例如：现在有一个`server`块
+
+### proxy_pass的转发规则
+大体上我们可以把转发分成proxy_pass后面有`/`，无`/`，有子路径三种情况
+1. 无`/`：
 ```
-server {
-	listen 8080;
-	server_name 10.x.x.1;
-	location /api {
-		proxy_pass http://10.x.x.2:8180/;
-	}
+location /get {
+	proxy_pass http://localhost:8080;
 }
 ```
-此时前端访问：`http://10.x.x.1:8080/api/user/info/1`，那么真实的访问地址就是`http://10.x.x.2:8180/user/info/1`，因为最后有一个`/`。
-但是如果`proxy_pass`端口没有`/`，那么真实的访问路径就是`http://10.x.x.2:8180/api/user/info/1`
+此时访问`http://localhost:8080/get/test`，则后端接收到的路径为`/get/test`
+而如果配置变成
+```
+location /get/ {
+	proxy_pass http://localhost:8080;
+}
+```
+行为与上相同，即在proxy_pass后面没有`/`时，无论location后面有没有`/`，真正的请求地址=proxy_pass地址+原始请求转发路径
+即`http://localhost:8080 + /get/test = http://localhost:8080/get/test`
+
+2. 有`/`
+```
+location /get {
+	proxy_pass http://localhost:8080/;
+}
+```
+这种情况直接报错404
+如果在location加上后`/`，
+```
+location /get/ {
+	proxy_pass http://localhost:8080/;
+}
+```
+访问`http://localhost:8080/get/test`，则后端接收到的路径为`/test`
+真正的请求地址=proxy_pass地址+原始请求转发路径-location地址
+即在第一种情况中真正的请求地址为`http://localhost:8080 + /get/test - /get = http:localhost:8080//test`
+而第二种则是`http://localhost:8080 + /get/test - /get/ = http:localhost:8080/test`
+
+3. 后面有子路径
+```
+location /get {
+	proxy_pass http://localhost:8080/abc;
+}
+```
+访问`http://localhost:8080/get/test`，则后端接收到的路径为`/abc/test`
+如果get后面也加上`/`
+```
+location /get/ {
+	proxy_pass http://localhost:8080/abc;
+}
+```
+访问`http://localhost:8080/get/test`，则后端接收到的路径为`/abctest`
+即它的行为与有`/`完全相同，真正的请求地址=proxy_pass地址+原始请求转发路径-location地址
+
+
+| proxy_pass格式        | location规则     | 示例请求      | 代理结果                    | 注意事项          |
+| ------------------- | -------------- | --------- | ----------------------- | ------------- |
+| http://backend      | location /get  | /get/test | http://backend/get/test | 完整保留原始路径      |
+| http://backend/     | location /get/ | /get/test | http://backend/test     | 需确保location带/ |
+| http://backend/abc  | location /get  | /get/test | http://backend/abc/test | 可能产生非预期路径     |
+| http://backend/abc/ | location /get/ | /get/test | http://backend/abc/test | 推荐的安全写法       |
 
 
 ## 其他配置项
