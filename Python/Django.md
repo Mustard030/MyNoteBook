@@ -838,7 +838,7 @@ urlpatterns = [
 
 从这个层级开始，将不再提供类似`get()`、`post()`的方法，而是提供`list()`、`create()`等方法，并且提供以下提到的属性和方法，这将有助于模型的CURD操作进一步简化。
 
-###### ✨GenericAPIView
+###### GenericAPIView
 
 `GenericAPIView`类扩展了 REST 框架的 `APIView` 类。包中提供的每个具体通用视图都是通过将 `GenericAPIView` 与一个或多个 `Mixin` 类组合来构建的。
 
