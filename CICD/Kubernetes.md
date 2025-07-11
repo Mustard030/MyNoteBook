@@ -1,3 +1,31 @@
+# kubectl
+## 命令格式
+```
+kubectl [command] [type] [name] [flags]
+```
+- command：指定要对资源操作的类型，例如create、get、delete等
+- type：指定资源类型，比如deployment、pod、service，可以指定单数、复数、缩写形式
+- name：指定资源的名称，大小写敏感
+- flags：指定额外的可选参数
+
+[命令文档](http://docs.kubernetes.org.cn/683.html)
+## 容器管理
+```bash
+# logs 查看pod的容器日志，如果pod中仅有一个容器，可省略容器名字
+kubectl logs -f pod名 [-c container名]
+
+# 进入容器
+kubectl exec -it pod名 [-c container名] -- /bin/bash
+
+# cp用于pod和外部文件交换，该命令依赖于容器镜像内的tar命令
+yum update && yum install tar -y
+tar --version
+# pod中容器的文件复制到本地(tar默认相对路径而不是绝对路径，自动创建不存在的目录)
+kubectl cp pod名:source local [-c container名]
+# 本地的文件复制到pod中容器
+交换pod名:source和local的位置即可
+```
+其中source不支持绝对路径，只允许使用相对路径，并且当前目录即工作目录
 
 # K8S的几大部件
 
@@ -24,7 +52,90 @@ kubectl delete namespace xxx
 kubectl delete -f namespace-xxx.yaml
 ```
 
+## ResourceQuota和LimitRange
+- **ResourceQuota​**​ 是集群资源的“总量阀门”，防止命名空间过度占用资源。
+- ​**​LimitRange​**​ 是容器资源的“个体规范”，确保每个容器合理使用资源。
 
+**ResourceQuota（资源配额）​**​
+- ​**​作用范围​**​：命名空间（Namespace）级别。
+- ​**​核心功能​**​：限制整个命名空间内资源的总使用量，包括：
+    - 计算资源（如 CPU、内存的 `requests` 和 `limits` 总和）。
+    - 存储资源（如存储卷大小）。
+    - 对象数量（如 Pod、Service、ConfigMap 的数量）。
+- ​**​目的​**​：防止单个命名空间消耗过多资源，确保集群资源的公平分配。
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: example-quota
+  namespace: my-namespace
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "4"
+    limits.memory: 8Gi
+    pods: "10"
+    services: "5"
+```
+
+**LimitRange（资源限制范围）​**​
+- ​**​作用范围​**​：命名空间内的单个 Pod 或容器。
+- ​**​核心功能​**​：
+    - 为容器或 Pod 设置默认的 `requests` 和 `limits`（如果用户未显式指定）。
+    - 约束单个容器或 Pod 的资源使用范围（如最小/最大 CPU、内存）。
+- ​**​目的​**​：避免资源浪费或争抢，确保每个容器都有合理的资源限制。
+```yaml
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: example-limits
+  namespace: my-namespace
+spec:
+  limits:
+  - type: Container
+    defaultRequest:
+      cpu: "0.1"
+      memory: "100Mi"
+    default:
+      cpu: "0.5"
+      memory: "200Mi"
+    max:
+      cpu: "1"
+      memory: "1Gi"
+    min:
+      cpu: "0.05"
+      memory: "50Mi"
+```
+
+
+1. ​**​LimitRange 先应用​**​：
+    - 当创建 Pod 时，LimitRange 自动为容器注入默认的 `requests/limits`，并校验是否超出单个容器的资源范围（如 `max`/`min`），如果小于最小资源要求，也不允许启动。
+2. ​**​ResourceQuota 后校验​**​：
+    - 检查命名空间的资源使用总量是否在配额范围内（如总 CPU、内存、Pod 数量等）。
+    - 如果 Pod 的资源需求导致命名空间超出配额，则创建请求会被拒绝。
+
+创建资源时要加上
+```yaml
+spec:
+	containers:
+		- name: 容器名
+		  image: 镜像
+		  # 当前容器的资源配额
+		  resources:
+		    requests:
+		      cpu: "200m"
+		      memory: "200Mi"
+		    limits:
+		      cpu: "400m"
+		      memory: "400Mi"
+```
+
+**注意：**
+LimitRange的限制优先级低于ResourceQuota限制，如出现冲突，以ResourceQuota为准。
+绑定资源配额之前创建的资源不受限制。
+如果不配置Limit，则默认与Quote保持一致。
+当绑定了资源配额之后，创建的资源就必须写上申请的资源量，否则直接报Forbidden。
 ## Pod
 Pod是k8s架构中最基础的部件，是可管理的最小计算单元，Pod是一组（一个或多个）容器，这些容器共享存储，网络，以及怎样运行这些容器的声明。
 
@@ -41,7 +152,7 @@ mynginx是pod名字
 ```
 获取pod基本信息
 ```bash
-kubectl get pod [-owide] [-n 命名空间 | -A] #owide看详情 -n指定命名空间，-A显示所有命名空间下的
+kubectl get pod [-o wide] [-n 命名空间 | -A] #owide看详情 -n指定命名空间，-A显示所有命名空间下的
 ```
 查看资源详情
 ```bash
@@ -61,6 +172,53 @@ kubectl exec -it <pod-name> -c <img-name: 如tomcat> --sh
 
 exit #退出
 ```
+
+**自定义命令**
+某些容器没有指定Entrypoint，导致没有一个可持续运行的前台程序，这样的容器启动后就会立即退出
+command用于指定进入容器后执行的自定义命令，可代替默认的容器命令。
+```yaml
+spec:
+	containers:
+		- name: 容器名
+		  image: 容器镜像
+		  # 自定义运行的命令
+		  command: ["/bin/sh", "-c", "while true; do sleep 1; done;"]
+```
+
+
+## 容器探针
+当pod处于运行态时，可使用**探针**(Probe)对容器的健康状态进行检查。
+### 探针类型
+
+| 探针类型                     | 探测作用         | 探测次数          | 探测失败后的措施                 |
+| ------------------------ | ------------ | ------------- | ------------------------ |
+| livenessProbe(存活探针或活性探针) | 容器是否运行正常     | 伴随容器的生命周期定期探测 | 据restartPolicy的策略执行重启    |
+| readinessProbe(就绪探针)     | 容器是否进入就绪状态   | 伴随容器的生命周期定期探测 | 把Pod从Service的Endpoint中删除 |
+| startupProbe(启动探针)       | 容器内的应用是否成功启动 | 仅在容器启动时探测一次   | 据restartPolicy的策略执行重启    |
+注意1：Pod启动成功后(活性探针成功)，若Pod中的服务进程还未初始化完成，则来自Service的外部流量就会请求失败。就绪探针就是解决这个问题的
+注意2：startupProbe探测成功之前，其他探针被禁用。
+
+每种探针的探测结果包含三种：
+- Success：探测成功
+- Failure：探测失败
+- Unknown：无法探测
+- 注意：若容器不提供任何探针，则三种探针默认结果都是成功
+三种探针的使用场景：
+- 存活探针：如果容器遇到问题时无法自行崩溃，例如：容器内部应用发生死锁，而容器的状态仍然为正常，这时无法提供服务，可以用存活探针并指定restartPolicy不是Never
+- 就绪探针：如果希望仅在探测成功后，才向Pod发送流量，可以使用就绪探针，否则，Pod将在启动阶段就开始接收流量。
+- 启动探针：如果容器中的应用初始化时间较长，为避免存活探针将容器错误的kill掉，可以使用启动探针。
+
+### 探测方式
+- exec：通过在容器内执行的linux命令来进行探测，如果命令返回码为0，则认为探测成功，返回码非0则认为探测失败。`echo $?`  *\*$?为上一条命令的返回值*
+- httpGet：通过向容器的指定端口和路径发起HTTP GET请求，如果HTTP返回码为>=200且<400，则认为探测成功，返回码为4xx，5xx则探测失败
+- tcpSocket：通过向容器中的指定端口发送tcp三次握手连接，如果端口正确且tcp连接成功则探测成功，连接失败则探测失败
+
+#### exec探测
+```
+apiVersion: v1
+kind: Pod
+```
+
 
 ## Deployment
 Deployment负责创建和更新应用程序的实例，在生产环境中，基本不会直接对pod进行操作，都是再封一层Deployment，使其拥有多副本、自愈、扩缩容的能力。创建Deployment后，Master节点将应用程序实例调度到集群的各个节点上，如果托管的实例节点被关闭或删除，Deployment控制器会将该实例替换为集群另一个节点上的实例。
@@ -135,6 +293,22 @@ spec:
 - Local：将本地文件系统的目录或文件映射到Pod中的一个Volume中，可以用来在Pod中共享文件或数据。
 - NFS：将网络上的一个或多个NFS共享目录挂载到Pod的Volume中，可以用来在多个Pod中共享数据
 - Secret：将敏感信息以密文的形式保存到Secret中，并且可以在Pod中以文件或环境变量的形式使用。Secret可以用来保存敏感信息，如用户名密码、证书等。
+
+```yaml
+spec:
+	volumes: #存储卷
+	- name: 存储卷的名字
+	  hostPath: #存储卷的类型。hostPath类似Docker的绑定挂载
+		  path: 节点路径(物理机内路径)
+		  type: 配置hostPath卷的字段。如：Directory、File、DirectoryOrCreate、FileOrCreate
+	containers:
+	- name: 容器名
+	  image: 容器镜像
+	  volumeMounts: #使用存储卷
+		  - name: 引用volumes.name
+		    mountPath: 容器路径
+```
+
 ### 使用方式
 在`.spec.volumes`字段中设置为Pod提供的卷，并在`.spec.containers[*].volumeMounts`字段中声明卷在容器中挂载的位置。容器中的进程看到的文件系统视图是由他们的容器镜像的初始内容以及挂载在容器中的卷（如果定义了）所组成。其中根文件系统间容器镜像的内容相吻合。任何在该文件系统下的写入操作，如果被允许的话，都会影响接下来容器中进程访问文件系统时所看到的内容。
 
@@ -806,3 +980,81 @@ systemctl daemon-reload
 systemctl start cri-docker && systemctl enable --now cri-docker
 ```
 
+
+## 便捷操作
+### ✨bash-completion
+安装插件`bash-completion`
+```bash
+# centos
+sudo yum install bash-completion -y
+# ubuntu
+sudo apt install bash-completion -y
+
+# 写入bashrc文件
+echo 'source <(kubectl completion bash)' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### kube-shell
+提供一个交互式的shell环境，用户可以直接在其中使用kubectl命令，它依赖于python和pip
+```bash
+# centos
+sudo yum install python3-pip -y
+# ubuntu
+sudo apt install python3-pip -y
+
+pip3 install kube-shell
+kube-shell
+```
+
+### helm
+```bash
+# github地址
+https://github.com/helm/helm/releases
+# 下载二进制包
+curl -o https://get.helm.sh/helm-v3.13.0-linux-amd64.tar.gz
+tar -zxvf helm-v3.13.0-linux-amd64.tar.gz
+mv linux-amd64/helm /usr/local/bin/helm
+# 查看版本
+helm version
+```
+
+### KubeSphere
+一个k8s集群的可视化管理面板
+```bash
+# 安装ks-core(Kubesphere core)核心组件，即可访问 Kubesphere 的 web 控制台
+helm upgrade --instal1 -n kubesphere-system --create-namespace ks-core https://charts.kubesphere.io/main/ks-core-1.1.3.tgz --debug --wait
+# 访问 Docker Hub 受限，请在命令后添加如下配置，修改默认的镜像拉取地址(华为云)
+--set global.imageRegistry=swr.cn-southwest-2.myhuaweicloud.com/ks
+--set extension.imageRegistry=swr.cn-southwest-2.myhuaweicloud.com/ks
+
+# 当pod为running时，表示安装成功
+kubectl get pods -n kubesphere-system
+```
+安装完成后它会提示登陆面板的url和账号密码，通常是主机ip+30880端口，初次登陆会要求修改密码
+
+### Chart仓库
+类似于DockerHub
+```bash
+# 添加仓库
+helm repo add bitnami https://charts.bitnami.com/bitnami && \
+helm repo add aliyun https://kubernetes.oss-cn-hangzhou.aliyuncs.com/charts
+
+# 查看所有仓库
+helm repo list
+
+# 更新仓库和搜索chart
+helm repo update [仓库]
+helm search repo [仓库]
+
+# 删除仓库
+helm repo remove aliyun
+```
+
+使用
+```bash
+helm install my-nginx bitnami/nginx --version 18.2.4
+```
+
+### YAML模板
+使用VSCode安装插件：1、`RedHat-YAML` 2、`kubernetes-templates`。
