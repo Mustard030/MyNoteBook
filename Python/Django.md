@@ -1,6 +1,3 @@
----
-date created: 2025-07-11 10:53
----
 
 # CSRF、CORS、Session
 
