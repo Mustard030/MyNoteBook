@@ -1013,7 +1013,7 @@ class ModelViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, mixins.Up
 ```
 
 这个层级提供了CURD的标准流程，如果需要自定义某个流程，只需要覆写对应Mixin提供的方法。
-要查看具体的参数和方法请查看[GenericAPIView](#✨GenericAPIView)章节。
+要查看具体的参数和方法请查看[GenericAPIView](#GenericAPIView)章节。
 
 **注册方式：**
 **使用 DRF Routers (适用于 ViewSets)​：**
