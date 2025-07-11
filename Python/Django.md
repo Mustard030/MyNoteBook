@@ -23,7 +23,7 @@ CORS_ORIGIN_WHITELIST = ['http://localhost:3000']  # 允许跨域来源
 CORS_ALLOW_CREDENTIALS = True  # 允许带Cookie
 ```
 
-​**​场景：生产环境主站+API子域 ([http://www.example.com ->](http://www.example.com ->) api.example.com)​**​
+​**​场景：生产环境主站+API子域 (front.example.com -> api.example.com)​**​
 
 ```python
 ALLOWED_HOSTS = ['.example.com']  # 所有子域
@@ -867,7 +867,7 @@ urlpatterns = [
 **3. 过滤** ：
 `filter_backends` 用于过滤查询集的过滤器后端类的列表。默认为与 `DEFAULT_FILTER_BACKENDS` 设置相同的值。
 并且如果使用`django-filter`，`filter_backends` 务必指定为`from django_filters.rest_framework import DjangoFilterBackend`，这个backend提供了`filterset_class`和`filterset_fields`字段的处理。
-`filterset_class`用于指定要在视图上使用的过滤器类。详情请查看[[#过滤]]章节。
+`filterset_class`用于指定要在视图上使用的过滤器类。详情请查看[过滤](#过滤)章节。
 
 **方法：**
 
@@ -1013,7 +1013,7 @@ class ModelViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, mixins.Up
 ```
 
 这个层级提供了CURD的标准流程，如果需要自定义某个流程，只需要覆写对应Mixin提供的方法。
-要查看具体的参数和方法请查看[[#✨GenericAPIView]]章节。
+要查看具体的参数和方法请查看[GenericAPIView](#✨GenericAPIView)章节。
 
 **注册方式：**
 **使用 DRF Routers (适用于 ViewSets)​：**
@@ -1339,7 +1339,7 @@ class UserListView(generics.ListAPIView):
 
 #### 自定义FilterSet（使用django-filters）
 
-支持的过滤器请查看[文档](https://django-filter.readthedocs.io/en/latest/ref/filters.html#filters)
+支持的过滤器请查看[官方文档](https://django-filter.readthedocs.io/en/latest/ref/filters.html#filters)
 `Filter`父类的签名：
 
 ```python
