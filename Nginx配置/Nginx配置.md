@@ -30,7 +30,7 @@ chmod 777 conf.d
 
 nginx.conf
 
-```
+```nginx
 # Nginx运行的用户和用户组
 # user nobody;
 # 工作进程：数目。根据硬件调整，通常等于CPU数量或者2倍于CPU。
@@ -82,7 +82,7 @@ http {
 
 例如 xxx.com.conf
 
-```
+```nginx
 #负载均衡用的
 upstream server_list{
 	server localhost:8080;
@@ -158,7 +158,7 @@ server{
 	error_page  404 /404.html;
 	error_page  500 502 503 504  /500.html;
 	
-	# 系统临时维护请打开下面这行注释，并重启nginx,维护完毕后请注释下年这行,并重启nginx,自行创建maintainace.html 
+	# 系统临时维护请打开下面这行注释，并重启nginx,维护完毕后请注释下面这行,并重启nginx,自行创建maintainace.html 
 	# rewrite ^(.*)$ /maintainace.html break;
 }
 
@@ -180,8 +180,9 @@ server {
     }
 
     # ssl配置
-    ssl_certificate     /usr/local/nginx/cert/*.xxx/*.xxx.com.cer;  #还有可能是.pem文件
-    ssl_certificate_key /usr/local/nginx/cert/*.xxx/*.xxx.com.key;  # 这里建议写绝对路径，保证不出错
+    ssl_certificate     /usr/local/nginx/cert/x.xxx/x.xxx.com.cer;  # 还有可能是.pem文件
+    ssl_certificate_key /usr/local/nginx/cert/x.xxx/x.xxx.com.key;  # 这里建议写绝对路径，保证不出错
+    
     # 如果你有中间证书，可以使用 ssl_certificate_chain 指令
     ssl_certificate_chain /path/to/chain_of_certificates.pem; # 中间证书
 
@@ -256,14 +257,14 @@ server {
 ### proxy_pass的转发规则
 大体上我们可以把转发分成proxy_pass后面有`/`，无`/`，有子路径三种情况
 1. 无`/`：
-```
+```nginx
 location /get {
 	proxy_pass http://localhost:8080;
 }
 ```
 此时访问`http://localhost:8080/get/test`，则后端接收到的路径为`/get/test`
 而如果配置变成
-```
+```nginx
 location /get/ {
 	proxy_pass http://localhost:8080;
 }
@@ -272,14 +273,14 @@ location /get/ {
 即`http://localhost:8080 + /get/test = http://localhost:8080/get/test`
 
 2. 有`/`
-```
+```nginx
 location /get {
 	proxy_pass http://localhost:8080/;
 }
 ```
 这种情况直接报错404
 如果在location加上后`/`，
-```
+```nginx
 location /get/ {
 	proxy_pass http://localhost:8080/;
 }
@@ -290,14 +291,14 @@ location /get/ {
 而第二种则是`http://localhost:8080 + /get/test - /get/ = http:localhost:8080/test`
 
 3. 后面有子路径
-```
+```nginx
 location /get {
 	proxy_pass http://localhost:8080/abc;
 }
 ```
 访问`http://localhost:8080/get/test`，则后端接收到的路径为`/abc/test`
 如果get后面也加上`/`
-```
+```nginx
 location /get/ {
 	proxy_pass http://localhost:8080/abc;
 }
@@ -318,15 +319,15 @@ location /get/ {
 
 **负载均衡配置状态**
 
-| 状态         | 概述                                                         |
-| ------------ | ------------------------------------------------------------ |
-| down         | 当前的server暂不参与负载均衡                                 |
-| backup       | 预留的备份服务器，当其他服务器都挂掉时启用                   |
+| 状态           | 概述                                                       |
+| ------------ | -------------------------------------------------------- |
+| down         | 当前的server暂不参与负载均衡                                        |
+| backup       | 预留的备份服务器，当其他服务器都挂掉时启用                                    |
 | max_fails    | 允许请求失败次数，如果请求失败次数超过限制，则经过fail_timeout时间后从虚拟服务池中kill掉该服务器 |
-| fail_timeout | 经过max_fails失败后，服务器暂停时间，max_fails设置后必须设置此值 |
-| max_conns    | 限制最大的连接数，用于服务器硬件配置不同的情况下             |
+| fail_timeout | 经过max_fails失败后，服务器暂停时间，max_fails设置后必须设置此值                |
+| max_conns    | 限制最大的连接数，用于服务器硬件配置不同的情况下                                 |
 
-```
+```nginx
 upstream node {
 	server IP地址:8081 down;
 	server IP地址:8082 backup;
@@ -347,7 +348,7 @@ upstream node {
 | least_conn | 最少链接数，哪个服务器链接数少分配给谁                   |
 | hash关键数值   | hash自定义的key                           |
 
-```
+```nginx
 upstream node {
 	server IP地址:8081 weight=10;
 	server IP地址:8082 weight=20;
@@ -355,7 +356,7 @@ upstream node {
 }
 ```
 
-```
+```nginx
 upstream node {
 	hash $request_uri;
 	server IP地址:8081;
@@ -363,7 +364,8 @@ upstream node {
 	server IP地址:8083;
 }
 ```
-```
+
+```nginx
 upstream node {
 	ip_hash;
 	server IP地址:8081;
@@ -371,7 +373,8 @@ upstream node {
 	server IP地址:8083;
 }
 ```
-```
+
+```nginx
 upstream node {
 	least_conn;
 	server IP地址:8081;
@@ -383,7 +386,7 @@ upstream node {
 
 **location匹配**
 
-```
+```nginx
 location [ = | ~ | ~* | ^~ ] uri{}
 ```
 
