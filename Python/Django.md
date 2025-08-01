@@ -1,4 +1,3 @@
-
 # CSRF、CORS、Session
 
 django settings里面安全相关的配置分为四大类`ALLOWED_HOSTS`、`CSRF_*`、`CORS_*`、`SESSION_*`
@@ -12,7 +11,6 @@ CSRF保护的是表单提交等操作，而CORS保护的是前端资源请求，
 | `CSRF_*`          | ​**​防跨站提交保护​**​     | `CSRF_TRUSTED_ORIGINS` 允许非安全来源; `CSRF_COOKIE_DOMAIN` 与跨子域相关     |
 | `CORS_*`          | ​**​控制跨域AJAX访问​**​  | 依赖 `django-cors-headers`；`CORS_ALLOW_CREDENTIALS=True` 时不能使用通配符 |
 | `*_COOKIE_DOMAIN` | ​**​跨子域共享认证状态​**​   | `SESSION_COOKIE_DOMAIN` 和 `CSRF_COOKIE_DOMAIN` 通常同步设置           |
-| ### 常见配置场景示例​​    |                     |                                                                 |
 
 ​**​场景：前后端分离开发 (localhost:3000 -> localhost:8000)​**​
 
@@ -67,19 +65,25 @@ ALLOWED_HOSTS = [
 
 **​作用​**​: 允许 ​**​不安全协议（如 HTTP）或非标准端口​**​ 的来源绕过 HTTPS 检查。定义哪些来源被信任，用于接收合法的 CSRF token。
 
+Django 的 CSRF 保护会拿「浏览器发来的 Origin（或 Referer）」跟「请求的 Host」做对比，两者必须来自同一个「源」，否则就拒绝。一些旧版浏览器或简单 GET 请求可能不发送 `Origin`，但会发送 `Referer`。Django 退而求其次，拿 `Referer` 去跟 `Host` 比对。这个配置项就是告诉Django除了当前请求的Host以外，还有什么来源是可信的。`Origin`的值就是浏览器头上那一串。
+
 **何时需要​**​:
 
 - 前端从 `http://localhost:3000` 访问后端 `https://api.example.com`
 - 后端运行在非标准端口（如 `https://example.com:8443`）
 
-​
-
 **​配置​**​:
 
 ```python
+# django4.0+, 必须明确协议头，如果是非标端口也要明确
 CSRF_TRUSTED_ORIGINS = [
     'https://*.example.com',  # 允许所有子域的 HTTPS
-    'http://localhost:3000',   # 开发环境明确允许
+    'http://localhost:3000',   # 允许非标端口
+]
+# django3.2, 不要携带任何协议头和端口号
+CSRF_TRUSTED_ORIGINS = [
+    '*.example.com',  # 允许通配符
+    'localhost',
 ]
 ```
 
@@ -101,9 +105,12 @@ CSRF_TRUSTED_ORIGINS = [
 
 > 需 `django-cors-headers` 包
 
-### CORS_ORIGIN_WHITELIST
+### CORS_ALLOWED_ORIGINS
+旧版本为：CORS_ORIGIN_WHITELIST，但该名称在新版本仍然可用
 
-**CORS_ORIGIN_WHITELIST 匹配的是请求头中的 `Origin` 头部**。当浏览器发起一个跨域请求时，会自动在请求头中添加一个 `Origin` 字段，**其值为请求发起页面的源（协议+域名+端口）**。例如，如果前端应用运行在 `https://www.example.com:8080`，那么请求头中的 `Origin` 就是 `https://www.example.com:8080`。
+**CORS_ALLOWED_ORIGINS** 匹配的是请求头中的 `Origin` 头部。当浏览器发起一个跨域请求时，会自动在请求头中添加一个 `Origin` 字段，**其值为请求发起页面的源（协议+域名+端口）**。例如，如果前端应用运行在 `https://www.example.com:8080`，那么请求头中的 `Origin` 就是 `https://www.example.com:8080`。
+
+这个配置与Django提供的[CSRF_TRUSTED_ORIGINS](#CSRF_TRUSTED_ORIGINS)不一样，CORS 和 CSRF 是分开的，Django 无法使用 CORS 配置来免除站点对安全请求所做的 Referer 检查。
 
 **​作用​**​: 精确指定 ​**​允许跨域请求的来源列表​**​（浏览器会阻止不在列表中的跨域 AJAX 请求）。
 
@@ -161,6 +168,16 @@ CORS_ALLOW_HEADERS = [
     'content-disposition',  # 允许前端接收下载头
     'x-custom-header',      # 自定义头
 ]
+
+# 或者可以
+
+from corsheaders.defaults import default_headers
+
+CORS_ALLOW_HEADERS = (
+    *default_headers,
+    "my-custom-header",
+)
+
 ```
 
 ### CORS_ALLOW_METHODS
@@ -297,6 +314,8 @@ python manage.py makemigrations --dry-run <app_name>
 
 ### makemigrations
 
+`makemigrations`时，**Django 不会对数据库做任何改动**，也不会读写 `django_migrations` 表。`makemigrations` 每次生成迁移文件时，**只关心当前模型状态 vs 数据库最后一次已应用的迁移**（记录在 `django_migrations` 表中的那个）。迁移文件的编号是Django扫描`app/migrations/` 目录下已有的迁移文件，取最大的数字加 1生成的。
+
 ```shell
 usage: manage.py makemigrations [-h] [--dry-run] [--merge] [--empty] [--noinput] [-n NAME] [--no-header] [--check] [--version] [-v {0,1,2,3}] [--settings SETTINGS] [--pythonpath PYTHONPATH] [--traceback] [--no-color] [--force-color] [--skip-checks] [app_label [app_label ...]]
 
@@ -327,12 +346,13 @@ optional arguments:
 ```
 
 通常建议先使用`--dry-run`来看看会执行什么操作，并且指定`<app_name>`来限制只变更自己修改的那个app。
-一般来说不太会用到`--merge`，因为很少会改动数据库结构
+
+`--merge`的作用：假设我们都在0003之后各自拉分支，然后各自出现了0004，这时候拉代码就会有两个0004，如果`migrate`就会报错，因为Django不知道用哪个0004。就需要使用`makemigrations --merge <app_label>`。这时Django**不会**修改现有的迁移文件（两个0004），并新增一条“合并迁移”0005。这时再`migrate`就可以了。它解决的是同一级编号的并行冲突。
 
 例：
 
 ```shell
-python manage.py makemigrations --dry-run <app_name>  # 只展示迁移，不生成实际文件
+python manage.py makemigrations --dry-run -v 3 <app_name>  # 只展示迁移，不生成实际文件
 python manage.py makemigrations <app_name>
 ```
 
@@ -379,7 +399,7 @@ python manage.py migrate <app_name>         # 应用所有未应用的迁移
 python manage.py migrate <app_name> <migration_name:如0002> # 应用特定迁移版本
 
 python manage.py migrate <app_name> zero    # 完全回滚应用（到零状态）
-python manage.py migrate --verbosity 2      # 显示详细的迁移执行过程  - 可选级别: 0=静默, 1=正常, 2=详细, 3=非常详细
+python manage.py migrate --verbosity 3      # 显示详细的迁移执行过程  - 可选级别: 0=静默, 1=正常, 2=详细, 3=非常详细
 python manage.py migrate --database <db_name>  # 指定要迁移的数据库（在settings.DATABASES中配置）
 python manage.py migrate --fake <app_name>  # 假迁移 标记迁移为完成状态但不实际执行SQL 当迁移已手动应用或不需要操作时使用
 ```
@@ -663,10 +683,10 @@ def view(request):
 
 CBV分为两部分，分别是**Django原生**的类和**DRF**的类
 
-**Django原生**：\
+**Django原生**：
 View -> TemplateView, RedirectView -> ListView, DetailView -> CreateView, UpdateView, DeleteView
 
-**DRF**：\
+**DRF**：
 APIView -> GenericAPIView（配合Mixins） -> 组合的通用视图（如ListAPIView） -> 视图集（ViewSet, ModelViewSet） -> 自定义动作（@action）
 
 #### Django原生CBV
@@ -884,7 +904,7 @@ def get_queryset(self):
 	return user.accounts.all()
 ```
 
-> 注意：如果通用视图中使用的 `serializer_class` 跨越 orm 关系，导致 n+1 问题，你可以使用 `select_related` 和 `prefetch_related` 在此方法中优化查询集。
+> 注意：如果通用视图中使用的 `serializer_class` 跨越 orm 关系，导致 n+1 问题，你可以使用 `select_related` 和 `prefetch_related` 在此方法中优化查询集。因为无论是 `serializer_class` 还是`filter_class`获取的都是这个方法返回的查询集。
 
 2. `get_object(self)`
    返回应该用于局部视图的对象实例。默认使用 `lookup_field` 参数来过滤基本查询集。
@@ -1035,9 +1055,11 @@ urlpatterns += router.urls
 
 ##### DRF 扩展操作：`@action` 装饰器
 
+> 在旧版本（DRF≤3.7）中是`@list_route`和`@detail_route`，其实就是detail=False和True的情况，在之后的版本中使用`@action`装饰器和参数`detail`代替。
+
 `url_path`：定义此操作对应的URL路径片段。默认为被修饰的方法的名称。
 `url_name`：定义此操作使用反向查询（`reverse`）时名称。默认为被修饰的方法的名称（将其中的下划线替换为短横线）。
-在视图集中添加自定义端点，支持独立配置权限、序列化器等。启用`detail`将会使生成的url后跟上查询具体资源的参数如`{pk}`，具体需要看所在的ViewSet定义。`url_path`的值将会作为`url`的最后一部分。
+在视图集中添加自定义端点，支持独立配置权限、序列化器等。启用`detail`将会使生成的url后跟上查询具体资源的参数如`{pk}`，具体需要看所在的ViewSet定义的`lookup_url_kwarg`。`url_path`的值将会作为`url`的最后一部分。
 
 ```python
 class UserViewSet(ModelViewSet):
@@ -1081,9 +1103,187 @@ def action(methods=None, detail=None, url_path=None, url_name=None, **kwargs):
     """
 ```
 
+当你定义了额外方法，可以在view.action中获取到这个被装饰的方法名，它可以使用在这样的地方
+
+```python
+class SomePermission(permissions.BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        if not user.is_authenticated:
+            return False
+        if view.action == 'create':  # 获取到的方法名用来做其他判断
+            return user.is_guest or user.is_developer or user.is_superuser
+        else:
+            return user.is_developer or user.is_superuser
+```
+
+`view` 这个参数（视图实例）会在以下 **官方钩子方法** 中传递
+
+**权限类（`BasePermission` 子类）**
+
+```python
+class MyPermission(permissions.BasePermission):
+    def has_permission(self, request, view):
+        # view 就是当前请求的视图实例
+        return True
+
+    def has_object_permission(self, request, view, obj):
+        # view 同样可用
+        return True
+```
+
+**限流类（`BaseThrottle` 子类）**
+
+```python
+class MyThrottle(throttling.BaseThrottle):
+    def allow_request(self, request, view):
+        # view 参数可用
+        return True
+```
+
+**分页类（`BasePagination` 子类）**
+
+```python
+class MyPagination(pagination.PageNumberPagination):
+    def paginate_queryset(self, queryset, request, view=None):
+        # view 参数可用（可选，但 DRF 会传）
+        return super().paginate_queryset(queryset, request, view)
+```
+
+**过滤器后端（`BaseFilterBackend` 子类）**
+
+```python
+class MyFilterBackend(filters.BaseFilterBackend):
+    def filter_queryset(self, request, queryset, view):
+        # view 参数可用
+        return queryset
+```
+
+**版本控制类（`BaseVersioning` 子类）**
+
+```python
+class MyVersioning(versioning.BaseVersioning):
+    def determine_version(self, request, *args, **kwargs):
+        view = kwargs.get('view')  # view 参数在 kwargs 中
+        return 'v1'
+```
+
+**元数据类（`BaseMetadata` 子类）**
+
+```python
+class MyMetadata(metadata.BaseMetadata):
+    def determine_metadata(self, request, view):
+        # view 参数可用
+        return {}
+```
+
+**视图集（ViewSet）中的钩子方法（非参数，但可访问 `self`）**
+
+```python
+class MyViewSet(viewsets.ModelViewSet):
+    def get_queryset(self):
+        # 这里可以直接用 self.action / self.request 等
+        return MyModel.objects.all()
+```
+
 ## 路由
 
+用于声明FBV或CBV的访问路径
+
+以ViewSet为例
+
+```python
+from rest_framework import routers
+
+router = routers.SimpleRouter()
+router.register(r'users', UserViewSet)
+router.register(r'accounts', AccountViewSet)
+
+urlpatterns += router.urls
+# 或者
+urlpatterns = [
+    path('forgot-password', ForgotPasswordFormView.as_view()),
+    path('', include(router.urls)),
+]
+
+```
+
+`register()`有两个强制参数：
+
+- `prefix`：用于指定这组路由的URL前缀
+- `viewset`：viewset类
+
+可选：
+
+- `basename`：创建URL名称的基础，如果未设置，则将根据视图集的 `queryset` 属性（如果有）获取模型名，并且根据模型名小写生成 `basename`。请注意，如果视图集不包含 `queryset` 属性，则必须在注册视图集时设置 `basename`。
+
+以上示例会生成：
+
+- URL pattern: `^users/$` Name: `'user-list'`
+- URL pattern: `^users/{pk}/$` Name: `'user-detail'`
+- URL pattern: `^accounts/$` Name: `'account-list'`
+- URL pattern: `^accounts/{pk}/$` Name: `'account-detail'`
+
+通常，您**不需要**指定 `basename` 参数，但如果您的视图集定义了自定义 `get_queryset` 方法，则该视图集可能没有 `.queryset` 属性集。如果您尝试注册该 viewset，您将看到如下错误：
+
+```
+'basename' argument not specified, and could not automatically determine the name from the viewset, as it does not have a '.queryset' attribute.
+```
+
+这意味着你需要在注册 viewset 时显式设置 `basename` 参数，因为它无法从模型名称中自动确定。
+
+| URL 样式                        | HTTP 方法                                    | 行动                                       | URL 名称                |
+| ----------------------------- | ------------------------------------------ | ---------------------------------------- | --------------------- |
+| {prefix}/                     | GET                                        | list                                     | {basename}-list       |
+| {prefix}/                     | POST                                       | create                                   | {basename}-list       |
+| {prefix}/{url_path}/          | GET, or as specified by `methods` argument | `@action(detail=False)` decorated method | {basename}-{url_name} |
+| {prefix}/{lookup}/            | GET                                        | retrieve                                 | {basename}-detail     |
+| {prefix}/{lookup}/            | PUT                                        | update                                   | {basename}-detail     |
+| {prefix}/{lookup}/            | PATCH                                      | partial_update                           | {basename}-detail     |
+| {prefix}/{lookup}/            | DELETE                                     | destroy                                  | {basename}-detail     |
+| {prefix}/{lookup}/{url_path}/ | GET, or as specified by `methods` argument | `@action(detail=True)` decorated method  | {basename}-{url_name} |
+
+默认情况下，`SimpleRouter` 创建的 URL 附加一个尾部斜杠。在实例化路由器时，可以通过将 `trailing_slash` 参数设置为 `False` 来修改此行为。例如：
+
+```python
+router = SimpleRouter(trailing_slash=False)
+```
+
 ## 序列化
+
+序列化器可以说是DRF的核心，它的作用是把Json或者XML与原生 Python 数据类型互相转换（序列化和反序列化）
+最主要使用的序列化器有两种，`ModelSerializer` 和 `Serializer`，它们的共同点都是：
+1. 序列化：对象 → Python 基本类型 → 渲染器 → 最终响应
+2. 反序列化：解析请求体 → Python 基本类型 → 调用 `.is_valid()` → 校验 → `.validated_data`
+3. 字段声明语法一致：`CharField`、`IntegerField`、`ListField`…
+4. 校验钩子一致：
+    - 字段级 `validate_<field_name>`
+    - 对象级 `validate`
+    - 全局 `.create()` / `.update()` 方法
+5. 都可以嵌套（Nested Serializer），也支持 `source=`、`read_only=`、`write_only=`、`required=` 等通用参数。
+
+差异：
+
+| 维度                  | Serializer    | ModelSerializer                                                                                |
+| ------------------- | ------------- | ---------------------------------------------------------------------------------------------- |
+| **字段来源**            | 全部手写。         | 默认把模型字段映射成对应的 DRF 字段，可 `exclude`/`fields` 控制。                                                  |
+| **校验器**             | 仅你自己写的。       | 额外追加模型层约束：`unique_together`、`max_length`、`blank=False` 等自动映射成 DRF 校验器。                         |
+| **create / update** | 必须自己实现（除非只读）。 | 已帮你实现通用版本：直接把 `validated_data` 解包成 `Model.objects.create(**data)` 或 `instance.update(**data)`。 |
+| **Meta 类**          | 不需要。          | 必须有 `class Meta:`，指定 `model = ...`。                                                            |
+| **额外字段**            | 无限制，自由组合。     | 可以混写，比如再写 `custom_field = SerializerMethodField()`。                                            |
+| **性能/可控性**          | 字段越少越轻量。      | 字段多时省事，但可能带出你不想要的 `id`、反向关联等。                                                                  |
+
+
+
+
+签名：
+```
+class BaseSerializer(Field):
+	
+```
+
+### 序列化器字段
+
 
 ## 认证
 
@@ -1438,10 +1638,10 @@ class UserFilter(django_filters.FilterSet):
         exclude = ['password']
 ```
 
-`Meta.fields`的列表写法将为`fields`中每个字段创建一个`exact`查找过滤器。字典语法将为每个字段创建一个过滤器表达式相符的过滤器。且务必要注意，列表和字段的key是**模型的字段名**，而不是显式定义的**过滤器名称**，如果错误使用了过滤器名称，将会引发`TypeError`。并且无论是列表还是字典写法，都不需要再包含显式声明的过滤器。
+`Meta.fields`的列表写法将为`fields`中每个字段创建**所有可用的默认过滤器**（包括 `exact`、`lt`、`gt`、`in` 等），具体取决于字段类型。字典语法将为每个字段创建一个过滤器表达式相符的过滤器。且务必要注意，列表和字段的key是**模型的字段名**，而不是显式定义的**过滤器名称**，如果错误使用了过滤器名称，将会引发`TypeError`。并且无论是列表还是字典写法，都不需要再包含显式声明的过滤器。
 `Meta.fields` 的目的仅是基于模型字段声明可用的过滤器。
-`Meta.fields` 并不是必须的，其实更推荐全部使用显式声明过滤器。
-`Meta.fields` 可以使用`fields = '__all__'`这种写法包含模型的全部字段。
+`Meta.fields` 是必须的，哪怕显式定义了过滤器字段也必须把这些名字全都写进去，更推荐全部使用显式声明过滤器。
+`Meta.fields` 使用`fields = '__all__'`这种写法包含模型的全部字段。
 `Meta.exclude`将排除声明的字段，将模型中其他字段都加入过滤器中。不可以同时指定`exclude`和`fields`。
 
 ## 分页
@@ -1509,8 +1709,10 @@ from rest_framework.pagination import PageNumberPagination
 
 class CustomPagination(PageNumberPagination):
     page_size = 10
-    page_size_query_param = 'size'  # 允许客户端自定义每页数量
+    page_size_query_param = 'size'  # 前端传入page size的参数名称
     max_page_size = 100             # 自定义数量的上限
+    
+    page_query_param = 'page'       # 前端传入page的参数名称
 
 class UserListView(APIView):
     pagination_class = CustomPagination
