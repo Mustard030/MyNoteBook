@@ -106,6 +106,7 @@ CSRF_TRUSTED_ORIGINS = [
 > 需 `django-cors-headers` 包
 
 ### CORS_ALLOWED_ORIGINS
+
 旧版本为：CORS_ORIGIN_WHITELIST，但该名称在新版本仍然可用
 
 **CORS_ALLOWED_ORIGINS** 匹配的是请求头中的 `Origin` 头部。当浏览器发起一个跨域请求时，会自动在请求头中添加一个 `Origin` 字段，**其值为请求发起页面的源（协议+域名+端口）**。例如，如果前端应用运行在 `https://www.example.com:8080`，那么请求头中的 `Origin` 就是 `https://www.example.com:8080`。
@@ -1251,15 +1252,15 @@ router = SimpleRouter(trailing_slash=False)
 
 ## 序列化
 
-序列化器可以说是DRF的核心，它的作用是把Json或者XML与原生 Python 数据类型互相转换（序列化和反序列化）
+序列化器可以说是DRF的核心，它的作用是把Json或者XML与原生 Python 数据类型互相转换（**序列化和反序列化**），并且**验证**字段的合法性
 最主要使用的序列化器有两种，`ModelSerializer` 和 `Serializer`，它们的共同点都是：
+
 1. 序列化：对象 → Python 基本类型 → 渲染器 → 最终响应
 2. 反序列化：解析请求体 → Python 基本类型 → 调用 `.is_valid()` → 校验 → `.validated_data`
 3. 字段声明语法一致：`CharField`、`IntegerField`、`ListField`…
 4. 校验钩子一致：
-    - 字段级 `validate_<field_name>`
-    - 对象级 `validate`
-    - 全局 `.create()` / `.update()` 方法
+   - 字段级 `validate_<field_name>`
+   - 对象级 `validate`
 5. 都可以嵌套（Nested Serializer），也支持 `source=`、`read_only=`、`write_only=`、`required=` 等通用参数。
 
 差异：
@@ -1273,25 +1274,1186 @@ router = SimpleRouter(trailing_slash=False)
 | **额外字段**            | 无限制，自由组合。     | 可以混写，比如再写 `custom_field = SerializerMethodField()`。                                            |
 | **性能/可控性**          | 字段越少越轻量。      | 字段多时省事，但可能带出你不想要的 `id`、反向关联等。                                                                  |
 
-
-
-
 签名：
-```
+
+```python
 class BaseSerializer(Field):
-	
+	def __init__(self, instance=None, data=empty, **kwargs):
+		self.instance = instance  # 可以拿到原始的对象
+		if data is not empty:
+			self.initial_data = data  # 可以拿到原始的data值
+		self.partial = kwargs.pop('partial', False)
+		self._context = kwargs.pop('context', {})
+		kwargs.pop('many', None)
+		super().__init__(**kwargs)
 ```
 
+`instance`用来**序列化**（Python对象 → JSON）
+`data`用来**反序列化**（把 JSON → Python 对象，并做校验/保存）
+两个参数在 `Serializer` 和 `ModelSerializer` 里的含义、取值、使用阶段完全一样；区别只在于 `ModelSerializer` 的 `instance` 必须是 **Django 模型实例**，而普通 `Serializer` 的 `instance` 可以是任意 Python 对象（dict、自定义类都行），对于普通 `Serializer`，`.data` 会按照字段定义，通过 `instance[field]`（如果是 dict）或 `getattr(instance, field)`（如果是对象）提取值
+
+使用示例：
+
+```python title:usage
+
+book = Book.objects.get(pk=1)
+ser = BookSerializer(instance=book)   # 只有 instance
+ser.data                              # → {'id':1,'title':'三体',...}
+
+
+payload = {'title': '三体Ⅲ', 'price': 29.9}
+ser = BookSerializer(data=payload)   # 只有 data
+ser.is_valid(raise_exception=True)   # 校验
+
+
+book = Book.objects.get(pk=1)        # 已存在的模型实例
+payload = {'title': '三体全集', 'price': 59.9}
+ser = BookSerializer(instance=book, data=payload, partial=True)  # `instance` 告诉 DRF“这是要被更新的对象”，`data` 是前端传来的新值。  `partial=True` 表示允许部分字段更新。
+ser.is_valid(raise_exception=True)
+ser.save()                           # 调用 update()
+
+
+queryset = Book.objects.all()
+serializer = BookSerializer(queryset, many=True)
+serializer.data
+# [
+#     {'id': 0, 'title': 'The electric kool-aid acid test', 'author': 'Tom Wolfe'},
+#     {'id': 1, 'title': 'If this is a man', 'author': 'Primo Levi'},
+#     {'id': 2, 'title': 'The wind-up bird chronicle', 'author': 'Haruki Murakami'}
+# ]
+
+```
+
+反序列化多个对象的默认行为是支持创建多个对象，但不支持多个对象更新。有关如何支持或自定义这两种情况的更多信息，请参阅下面的 [ListSerializer](#ListSerializer) 文档。
+
+---
+### Serializer
+
+通常来说`Serializer`接收的是与数据库对象无关的数据，比如`CommonResponse`之类的
+
+```python title:CommonResponse
+from rest_framework import serializers
+from rest_framework.response import Response
+
+# -------------------------------------------------
+# 1. Universal response serializer
+# -------------------------------------------------
+class CommonResponseSerializer(serializers.Serializer):
+    """data field accepts any type"""
+    status = serializers.BooleanField()
+    detail = serializers.CharField(allow_blank=True)
+    data   = serializers.JSONField(required=False, allow_null=True)
+
+
+# -------------------------------------------------
+# 2. CommonResponse class
+# -------------------------------------------------
+class CommonResponse(Response):
+    """
+    CommonResponse class
+    usage：
+        return CommonResp(True, 'OK', obj)                             # default 200
+        return CommonResp.fail(detail='param error', http_code=400)    # 400
+        return CommonResp.ok(data=new_obj, http_code=201)              # 201
+    """
+    def __init__(self,
+                 status=True,
+                 detail='success',
+                 data=None,
+                 *,
+                 http_code=200,
+                 ):
+        ser = CommonResponseSerializer(data={'status': status,
+                                             'detail': detail,
+                                             'data': data})
+        ser.is_valid(raise_exception=True)
+        super().__init__(data=ser.data, status=http_code)
+
+    # ---- shortcut methods ----
+    @classmethod
+    def ok(cls, detail='success', data=None, *, http_code=200):
+        return cls(True, detail, data, http_code=http_code)
+
+    @classmethod
+    def fail(cls, detail='error', data=None, *, http_code=400):
+        return cls(False, detail, data, http_code=http_code)
+```
+
+#### 字段级验证
+
+在序列化器中，字段级验证是一个很有用的工具，他会在`serializer.is_valid()`时调用，校验错误时请抛出`serializers.ValidationError`，例如：
+
+```python hl:13
+from rest_framework import serializers
+
+class BlogPostSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=100)
+    content = serializers.CharField()
+
+    def validate_title(self, value):
+        """
+        Check that the blog post is about Django.
+        """
+        if 'django' not in value.lower():
+            raise serializers.ValidationError("Blog post is not about Django")
+        return value  # 务必返回原始值
+```
+
+**注意：** 如果 `<field_name>` 在序列化程序上使用参数 `required=False` 声明，则如果未包含该字段，则不会执行此验证步骤。
+
+或者也可以在字段上定义验证器
+
+```python hl:6
+def multiple_of_ten(value):
+    if value % 10 != 0:
+        raise serializers.ValidationError('Not a multiple of ten')
+
+class GameRecord(serializers.Serializer):
+    score = serializers.IntegerField(validators=[multiple_of_ten])
+    ...
+```
+
+#### 对象级验证
+
+如果需要验证整个对象，需要添加一个固定签名的方法`validate()`到序列化器类中，这个方法只有一个参数`data`，是字段值的字典。如果验证错误，请抛出`serializers.ValidationError`
+
+```python hl:14
+from rest_framework import serializers
+
+class EventSerializer(serializers.Serializer):
+    description = serializers.CharField(max_length=100)
+    start = serializers.DateTimeField()
+    finish = serializers.DateTimeField()
+
+    def validate(self, data):
+        """
+        Check that start is before finish.
+        """
+        if data['start'] > data['finish']:
+            raise serializers.ValidationError("finish must occur after start")
+        return data  # 务必返回原始值
+```
+
+序列化程序类还可以包括应用于整个字段数据集的可重用验证器。通过在内部 `Meta` 类中声明这些验证器来包含它们，如下所示：
+
+```python hl:8-13
+class EventSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    room_number = serializers.ChoiceField(choices=[101, 102, 103, 201])
+    date = serializers.DateField()
+
+    class Meta:
+        # Each room only has one event per day.
+        validators = [
+            UniqueTogetherValidator(
+                queryset=Event.objects.all(),
+                fields=['room_number', 'date']
+            )
+        ]
+```
+
+更多高级的验证器请查看[官方文档](https://www.django-rest-framework.org/api-guide/validators/)
+
+#### 处理嵌套对象
+
+`Serializer` 类本身就是一种 `Field` 类型，可用于表示一种对象类型嵌套在另一种对象类型中的关系。
+
+```python hl:6
+class UserSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    username = serializers.CharField(max_length=100)
+
+class CommentSerializer(serializers.Serializer):
+    user = UserSerializer()  #many=True
+    content = serializers.CharField(max_length=200)
+    created = serializers.DateTimeField()
+```
+
+同样，如果嵌套表示应该是一个列表，你应该将 `many=True` 标志传递给嵌套序列化器。
+
+由于嵌套创建和更新的行为可能不明确，并且可能需要相关模型之间的复杂依赖关系，因此DRF不会帮我们创建可用的嵌套支持。但是有第三方库可以做到[drf-writable-nested](https://github.com/beda-software/drf-writable-nested)
+
+---
+### ModelSerializer
+**`ModelSerializer` 类与常规 `Serializer` 类相同，不同之处在于** ：
+- 它将根据模型自动生成一组字段。
+- 它将为序列化器自动生成验证器，例如 unique_together 验证器。
+- 它包括 `.create()` 和 `.update()` 的简单默认实现。
+
+默认情况下，类上的所有模型字段都将映射到相应的序列化器字段。
+
+模型上的任何关系（如外键）都将映射到 `PrimaryKeyRelatedField`，即显示为主键。默认情况下，除非按照[序列化程序关系](https://www.django-rest-framework.org/api-guide/relations/)文档中的指定明确包含反向关系，否则不会包含反向关系。
+
+#### 指定包含字段
+例如：
+```python
+class AccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Account
+        fields = ['id', 'account_name', 'users', 'created']  # 这里需要包含显式声明的序列化字段
+        # 还可以将 `fields` 属性设置为特殊值 `'__all__'` 以指示应使用模型中的所有字段。例如：
+        fields = '__all__'
+        # 可以将 `exclude` 属性设置为要从序列化程序中排除的字段列表。例如：
+        exclude = ['users']
+		# 如果 `Account` 模型有 3 个字段 `account_name`、`users` 和 `created`，这将导致字段 `account_name` 和 `created` 被序列化。
+```
+
+`fields` 和 `exclude` 这两个字段是互斥的。
+
+`fields` 和 `exclude` 属性中的名称通常会映射到模型类上的模型字段。
+
+`fields` 选项中的名称还可以映射到 `@property` 装饰的方法 或 模型上的 **无参方法**，或者你在序列化器里手动写的字段名（只要它能通过 `source` 解析），即使这个字段不存在于数据库模型中也可以。例如：
+```python
+class Book(models.Model):
+    title = models.CharField(max_length=100)
+    price = models.DecimalField(max_digits=6, decimal_places=2)
+
+    @property
+    def discounted_price(self):
+        return float(self.price) * 0.9        # 不需要参数
+
+    def full_title(self):
+        return f"{self.title} (${self.price})"  # 无参方法
+
+class BookSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Book
+        fields = ('id', 'title', 'price', 'discounted_price', 'full_title')
+        # discounted_price 和 full_title 都不是数据库字段 
+```
+只要能通过 `getattr(instance, name)` 拿到值即可
+
+> 从版本 3.3.0 开始， **必须**提供 `fields`或 `exclude`其中一个。
+
+#### 指定只读字段
+
+如果需要添加多个只读字段，可以使用`Meta.read_only_fields`，而不是在每个字段使用 `read_only=True` 属性。
+
+`Meta.read_only_fields`应该是字段名称的列表或元组：
+
+```python
+class AccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Account
+        fields = ['id', 'account_name', 'users', 'created']
+        read_only_fields = ['account_name']
+```
+
+默认情况下，设置了 `editable=False` 和 `AutoField` 字段的模型字段将设置为只读，无需添加到 `read_only_fields` 选项中。
+**特殊场景：**
+如果只读字段同时需要参与`unique_together`约束，例如 `user` 字段对用户是只读的（不能自己改），且数据库要求`(user, some_other_id)`唯一，如果此时`user`是只读的，验证器拿不到`user`的值就会有问题。正确做法是同时给这个字段 `read_only=True`（前端不可改），`default=CurrentUserDefault()`（后端自动填当前登录用户）
+```python
+class RecordSerializer(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(
+        read_only=True,
+        default=serializers.CurrentUserDefault()
+    )
+
+    class Meta:
+        model = Record
+        fields = ['id', 'user', 'some_other_id', 'data']
+        # 不需要再把 user 放进 read_only_fields，上面已显式声明
+```
+
+还有一个快捷方式，允许您使用 `extra_kwargs` 选项在字段上指定任意附加关键字参数。与 `read_only_fields` 的情况一样，这意味着您不需要在序列化程序上显式声明字段。
+
+此选项是一个字典，用于将字段名称映射到关键字参数的字典。例如：
+
+```python
+class CreateUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['email', 'username', 'password']
+        extra_kwargs = {'password': {'write_only': True}}
+
+    def create(self, validated_data):
+        user = User(
+            email=validated_data['email'],
+            username=validated_data['username']
+        )
+        user.set_password(validated_data['password'])
+        user.save()
+        return user
+```
+
+请记住，如果已在序列化器类上显式声明了该字段，则 `extra_kwargs` 选项将被忽略。
+
+
+#### 创建和更新
+`ModelSerializer`中自带了`update`和`create`方法的实现，它最终会调用`self.Meta.model`本身的`create`和`save`方法
+签名：
+
+```python title:ModelSerializer hl:5,10
+class ModelSerializer(Serializer):
+    def create(self, validated_data):
+	    ...
+	    ModelClass = self.Meta.model
+	    instance = ModelClass._default_manager.create(**validated_data)
+	    ...
+	    
+	def update(self, instance, validated_data):
+		...
+		instance.save()
+		...
+```
+
+并且DRF会自动调用`serializer.save()`，由它来自动确定调用`create`还是`update`
+
+```python title:DRFMixin hl:13,30,44,47
+class CreateModelMixin:
+    """
+    Create a model instance.
+    """
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+        
+class UpdateModelMixin:
+    """
+    Update a model instance.
+    """
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        ...
+        return Response(serializer.data)
+
+    def perform_update(self, serializer):
+        serializer.save()
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
+
+class BaseSerializer(Field):
+	def save(self, **kwargs):
+        ...
+
+        validated_data = {**self.validated_data, **kwargs}
+
+        if self.instance is not None:
+            self.instance = self.update(self.instance, validated_data)
+            ...
+        else:
+            self.instance = self.create(validated_data)
+            ...
+
+        return self.instance
+```
+
+可以看到`save`方法其实是支持传入更多参数以保存到数据库的，但是DRF的默认`perform_`方法里面没有添加额外的参数，我们可以重写以传入一些额外的内容例如`serializer.save(owner=request.user)`，并且`save`方法是会返回对应的实例的，但是DRF丢弃了它
+
+#### ModelSerializer 的 Meta 选项
+
+| 选项                | 说明                                                           |
+| ----------------- | ------------------------------------------------------------ |
+| model             | 必写，对应 ORM 模型                                                 |
+| fields            | '\_\_all\_\_' 或列表 / 元组                                       |
+| exclude           | 反向排除                                                         |
+| depth             | 自动嵌套深度（0~10）                                                 |
+| read_only_fields  | 仅序列化                                                         |
+| write_only_fields | 仅反序列化（3.x 已弃用，用 extra_kwargs）                                |
+| extra_kwargs      | 对单个字段再附加参数：extra_kwargs = {'password': {'write_only': True}} |
+| validators        | 模型级验证器列表                                                     |
+| field_classes     | 自定义映射，如 {'JSONField': MyJSONField}                           |
+
+#### 高级字段默认值
+有时可能会有字段需要用于验证器，但不由用户直接输入，比如说当前用户。此时就可以使用 `HiddenField`，这个字段将会出现在 `validated_data` 中，但不会用于序列化程序输出表示形式。使用了`read_only=True`的字段不生效`default=...`参数。
+##### 当前用户默认值
+可用于表示当前用户的默认类。为了使用它，在实例化序列化程序时，必须将“请求”作为上下文字典的一部分提供。
+
+```python
+owner = serializers.HiddenField(default=serializers.CurrentUserDefault())
+```
+
+##### 仅创建默认值
+一个默认类，仅可用于在创建作期间设置默认参数。在更新期间，该字段被省略。它采用单个参数，该参数是创建作期间应使用的默认值或可调用对象。
+```python
+created_at = serializers.DateTimeField(default=serializers.CreateOnlyDefault(timezone.now))
+```
+
+---
+### HyperlinkedModelSerializer
+不同之处在于所有的外键关系都使用超链接表示，而不是默认的主键表示
+默认情况下，序列化程序将包含一个 `url` 字段，而不是一个主键字段。
+
+url 字段将使用 `HyperlinkedIdentityField` 序列化器字段表示，模型上的任何关系都将使用 `HyperlinkedRelatedField` 序列化器字段表示。如果不想用url这个字段可以在Django设置中修改
+```python
+REST_FRAMEWORK = {
+    'URL_FIELD_NAME': 'api_url'   # 现在所有 HyperlinkedModelSerializer 的字段叫 api_url
+}
+```
+
+您可以通过将主键添加到 `fields` 选项来显式包含主键，例如：
+
+```python
+class AccountSerializer(serializers.HyperlinkedModelSerializer):
+    class Meta:
+        model = Account
+        fields = ['url', 'id', 'account_name', 'users', 'created']
+```
+
+实例化 `HyperlinkedModelSerializer` 时，必须包含当前的 `请求` ，例如：
+
+```python
+serializer = AccountSerializer(queryset, context={'request': request})
+```
+
+这样做将确保超链接可以包含适当的主机名，以便生成的表示形式使用完全限定的 URL，例如：
+
+```
+http://api.example.com/accounts/1/
+```
+
+而不是相对 URL，例如：
+
+```
+/accounts/1/
+```
+
+如果你**确实**想使用相对 URL，你应该显式地传递 `{'request'： None}` 在序列化程序上下文中。
+
+**HyperlinkedModelSerializer 最终生成的“超链接”到底指向哪个 URL，完全由“视图名(view_name)” + “查找字段(lookup_field)”决定；你可以用 `extra_kwargs` 快捷改，也可以显式写字段，甚至全局改默认字段名。**
+
+**默认规则（无需配置）：**
+- **视图名**：`<model_name>-detail`  
+    例：`account-detail`
+- **查找字段**：`pk`  
+    例：`/accounts/123/`
+
+**快捷改写`Meta.extra_kwargs`：**
+只想改某字段的视图名或查找字段，又不想在类里显式写字段，就用 `extra_kwargs`：
+
+```python
+class AccountSerializer(serializers.HyperlinkedModelSerializer):
+    class Meta:
+        model   = Account
+        fields  = ['url', 'account_name', 'users', 'created']
+        extra_kwargs = {
+            'url':   {'view_name': 'accounts', 'lookup_field': 'account_name'},
+            'users': {'lookup_field': 'username'}   # 只改 users 的查找字段
+        }
+```
+
+结果
+- `url` → `/accounts/<account_name>/`
+- `users` → `/users/<username>/`
+
+**显式写字段：完全掌控**
+
+当需要更多参数（`queryset`, `lookup_url_kwarg`, `format` 等）或一次性声明多个关系字段时，直接在类里定义：
+
+```python
+class AccountSerializer(serializers.HyperlinkedModelSerializer):
+    url   = serializers.HyperlinkedIdentityField(
+        view_name='accounts', lookup_field='slug'
+    )
+    users = serializers.HyperlinkedRelatedField(
+        view_name='user-detail',
+        lookup_field='username',
+        many=True,
+        read_only=True
+    )
+
+    class Meta:
+        model  = Account
+        fields = ['url', 'account_name', 'users', 'created']
+```
+
+`view_name`就是url的name属性，`lookup_field`是模型里的字段名，`lookup_url_kwarg`是url里的`<...:xxx>`捕获组名
+
+---
+### ListSerializer
+
+`ListSerializer` 类提供了一次序列化和验证多个对象的行为。 通常不需要直接使用 `ListSerializer`，而是应该在实例化序列化器时简单地传递 `many=True`。
+
+当实例化序列化器并传递 `many=True` 时，将创建一个 `ListSerializer` 实例。然后，序列化器类成为父 `ListSerializer` 的子类。
+
+以下参数也可以传递给 `ListSerializer` 字段或传递 `many=True` 的序列化器：
+
+`allow_empty`
+默认情况下，这是 `True`，但如果要不允许将空列表作为有效输入，则可以将其设置为 `False`。
+
+`max_length`
+默认情况下，这是 `None` ，但如果要验证列表包含的元素数是否不超过此数量的元素，则可以将其设置为正整数。
+
+`min_length`
+默认情况下，这是 `None` ，但如果要验证列表包含的元素数是否少于此数量的元素，则可以将其设置为正整数。
+
+#### 多个创建
+创建多个对象的默认实现是简单地为列表中的每个项目调用 `.create()` 。如果要自定义此行为，则需要自定义 `ListSerializer` 类上的 `.create()` 方法，该方法在传递 `many=True` 时使用。
+```python hl:2-4,9
+class BookListSerializer(serializers.ListSerializer):
+    def create(self, validated_data):
+        books = [Book(**item) for item in validated_data]
+        return Book.objects.bulk_create(books)
+
+class BookSerializer(serializers.Serializer):
+    ...
+    class Meta:
+        list_serializer_class = BookListSerializer
+```
+
+#### 多个更新
+默认情况下，`ListSerializer` 类不支持多次更新。这是因为插入和删除应该预期的行为是不明确的。如果需要支持多个更新，只能重写并指定`list_serializer_class`，例如：
+```python
+class BookListSerializer(serializers.ListSerializer):
+    def update(self, instance, validated_data):
+        # Maps for id->instance and id->data item.
+        book_mapping = {book.id: book for book in instance}
+        data_mapping = {item['id']: item for item in validated_data}
+
+        # Perform creations and updates.
+        ret = []
+        for book_id, data in data_mapping.items():
+            book = book_mapping.get(book_id, None)
+            if book is None:
+                ret.append(self.child.create(data))
+            else:
+                ret.append(self.child.update(book, data))
+
+        # Perform deletions.
+        for book_id, book in book_mapping.items():
+            if book_id not in data_mapping:
+                book.delete()
+
+        return ret
+
+class BookSerializer(serializers.Serializer):
+    # We need to identify elements in the list using their primary key,
+    # so use a writable field here, rather than the default which would be read-only.
+    id = serializers.IntegerField()
+    ...
+
+    class Meta:
+        list_serializer_class = BookListSerializer
+```
+
+---
 ### 序列化器字段
 
+#### 布尔字段
+##### **`BooleanField`**
+**签名：**`BooleanField()`
+省略值将会被视为`False`，即使指定了`default=True`也不行
+
+#### 字符串字段
+##### **`CharField`**
+**签名：** `CharField(max_length=None, min_length=None, allow_blank=False, trim_whitespace=True)`
+- `max_length` - 验证输入包含的字符数是否不超过此数量。
+- `min_length` - 验证输入包含的字符数是否不少于此数量。
+- `allow_blank` - 如果设置为 `True`，则空字符串应被视为有效值。如果设置为 `False`，则空字符串被视为无效，并将引发验证错误。默认为 `False`。
+- `trim_whitespace` - 如果设置为 `True`，则修剪前导和尾随空格。默认为 `True`。
+
+##### **`EmailField`**
+**签名：** `EmailField(max_length=None, min_length=None, allow_blank=False)`
+文本表示形式，验证文本是否为有效的电子邮件地址。
+
+##### **`RegexField`**
+**签名：** `RegexField(regex, max_length=None, min_length=None, allow_blank=False)`
+- `regex` - 可以是字符串，也可以是编译的 python 正则表达式对象。
+一种文本表示形式，用于验证给定值与特定正则表达式的匹配。
+使用 Django 的 `django.core.validators.RegexValidator` 进行验证。
+
+##### **`SlugField`**
+**签名：** `SlugField(max_length=50, min_length=None, allow_blank=False)`
+等价于`RegexField(r'^[a-zA-Z0-9_-]+$')`
+
+##### **`URLField`**
+**签名：** `URLField(max_length=200, min_length=None, allow_blank=False)`
+也是一个特殊的`RegexField`，需要格式为 `<scheme>://<host>/<path>` 的完全限定 URL。
+使用 Django 的 `django.core.validators.URLValidator` 进行验证。
+
+##### **`UUIDField`**
+**签名：** `UUIDField(format='hex_verbose')`
+- `format`：确定 uuid 值的表示格式
+    - `'hex_verbose'` - 规范十六进制表示，包括连字符： `"5ce0e9a5-5ffa-654b-cee0-1238041fb31a"`
+    - `'hex'` - UUID 的紧凑十六进制表示，不包括连字符： `"5ce0e9a55ffa654bcee01238041fb31a"`
+    - `'int'` - UUID 的 128 位整数表示： `"123456789012312313134124512351145145114"`
+    - `'urn'` - RFC 4122 UUID 的 URN 表示： `"urn:uuid:5ce0e9a5-5ffa-654b-cee0-1238041fb31a"` 
+
+**format 参数只决定 `UUIDField` 在JSON 输出时用什么字符串样式，无论哪种样式，反序列化（用户传进来的数据）都能被正确解析成 UUID 对象。**
+
+##### **`FilePathField`**
+**签名：** `FilePathField(path, match=None, recursive=False, allow_files=True, allow_folders=False, required=None, **kwargs)`
+- `path` - 从指定的文件系统绝对路径中选择。
+- `match` - 一个正则表达式，作为字符串，FilePathField 将用于过滤文件名。
+- `recursive` - 指定是否应包含路径的所有子目录。默认值为 `False`。
+- `allow_files` - 指定是否应包括指定位置中的文件。默认值为 `True`。
+- `allow_folders` - 指定是否应包括指定位置中的文件夹。默认值为 `False`。
+
+`allow_files`或`allow_folders` 必须有一个为`True`，否则就没东西可以选了。且`FilePathField`仅“选文件名”，不传文件内容。
+
+例：
+```python
+serializers.FilePathField(
+    path="/absolute/path/to/dir",   # 必须绝对路径
+	match=r".*\.html$",             # 正则过滤文件名，如只允许 .html
+    recursive=False,                # 是否递归子目录
+    allow_files=True,               # 是否包含文件
+    allow_folders=False,            # 是否包含文件夹
+    allow_empty=False,              # 空字符串是否合法
+)
+```
+`FilePathField` = **“目录枚举器”** → 把服务器某个目录下的文件名变成 **下拉选项**，只能选，不能传。
+
+##### **`IPAddressField`**
+**签名** ： `IPAddressField(protocol='both', unpack_ipv4=False, **options)`
+- `protocol`将有效输入限制为指定协议。接受的值为“both”（默认值）、“IPv4”或“IPv6”。匹配不区分大小写。
+- `unpack_ipv4` 解压缩 IPv4 映射地址，例如`::ffff:192.0.2.1`。如果启用此选项，则该地址将解压缩为 `192.0.2.1`。默认值为`False`。仅当`protocol`设置为`'both'`时才能使用。
+例如，某些网络设备或系统可能会将 IPv4 地址以 IPv6 的形式发送，但你希望在内部处理时使用普通的 IPv4 格式。
+该参数主要用于 **反序列化**（用户提交数据时），**序列化输出** 时不会受影响。
+
+
+#### 数值字段
+##### **`IntegerField`**
+**签名** ： `IntegerField(max_value=None, min_value=None)`
+- `max_value` 验证提供的数字是否不大于此值。
+- `min_value` 验证提供的数字是否不小于此值。
+
+##### **`FloatField`**
+**签名** ： `FloatField(max_value=None, min_value=None)`
+- `max_value` 验证提供的数字是否不大于此值。
+- `min_value` 验证提供的数字是否不小于此值。
+
+##### **`DecimalField`**
+**签名** ： `DecimalField(max_digits, decimal_places, coerce_to_string=None, max_value=None, min_value=None)`
+- `max_digits` 数字中允许的最大位数（包括小数点前后）。它必须是 `None` 或大于或等于 `decimal_places` 的整数。
+- `decimal_places` 小数点后的位数。
+- `coerce_to_string` 如果应为表示返回字符串值，则设置为 `True`，如果应返回 `Decimal` 对象，则设置为 `False`。默认值与 `COERCE_DECIMAL_TO_STRING` 设置键相同的值，除非覆盖，否则该值将为 `True`。如果序列化程序返回 `Decimal` 对象，则最终输出格式将由呈现器确定。请注意，设置 `localize` 将强制该值为 `True`。
+- `max_value` 验证提供的数字是否不大于此值。应该是整数或`Decimal`对象。
+- `min_value` 验证提供的数字是否不小于此值。应该是整数或`Decimal`对象。
+- `localize`设置为 `True` 可根据当前区域设置启用输入和输出的本地化。这也会强制 `coerce_to_string` 为 `True`。默认为 `false`。请注意，如果您在设置文件中设置了 `USE_L10N=True`，则启用数据格式。
+- `rounding`设置量化到配置精度时使用的舍入模式。有效值为`Decimal`模块的[舍入模式](https://docs.python.org/3/library/decimal.html#rounding-modes) 。默认为 `None`。
+- `normalize_output` 序列化时将规范化十进制值。这将剥离所有尾随零，并将值的精度更改为所需的最小精度，以便能够在不丢失数据的情况下表示值。默认为 `false`。
+
+#### 日期和时间字段
+##### **`DateTimeField`**
+**签名：** `DateTimeField(format=api_settings.DATETIME_FORMAT, input_formats=None, default_timezone=None)`
+- `format` - 输出格式。默认值由 `DATETIME_FORMAT` 设置决定，通常是 `iso-8601`。可以设置为 `None`，此时返回 `datetime` 对象，由渲染器决定最终格式。
+- `input_formats` - 输入格式列表。默认值由 `DATETIME_INPUT_FORMATS` 设置决定，通常是 `['iso-8601']`。
+- `default_timezone` - 默认时区。如果 `USE_TZ=True`，则默认为当前时区。接受表示时区的 `tzinfo` 子类（`zoneinfo` 或 `pytz`）。
+
+`format`支持传入[Python strftime格式](https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior)，也可以是特殊值 `'iso-8601'`。
+
+当使用 `ModelSerializer` 或 `HyperlinkedModelSerializer` 时，如果模型字段设置了 `auto_now=True` 或 `auto_now_add=True`，那么在生成序列化器字段时，DRF 会自动将这些字段设置为 **`read_only=True`**。如果希望改变这种默认行为（例如允许用户更新这些字段），则需要在序列化器中 **显式声明** 这些字段。
+```python
+class Comment(models.Model):
+    created = models.DateTimeField(auto_now_add=True)  # 创建时自动设置
+    updated = models.DateTimeField(auto_now=True)     # 每次保存时自动设置
+
+from rest_framework import serializers
+from .models import Comment
+
+class CommentSerializer(serializers.ModelSerializer):
+    created = serializers.DateTimeField(read_only=False)  # 显式声明，允许更新
+
+    class Meta:
+        model = Comment
+        fields = ['id', 'created', 'updated']
+```
+
+##### **`DateField`**
+**签名：** `DateField(format=api_settings.DATE_FORMAT, input_formats=None)`
+- `format` - 输出格式。默认值由 `DATE_FORMAT` 设置决定，通常是 `iso-8601`。可以设置为 `None`，此时返回 `datetime` 对象，由渲染器决定最终格式。
+- `input_formats` - 输入格式列表。默认值由 `DATE_INPUT_FORMATS` 设置决定，通常是 `['iso-8601']`。
+同上。
+
+##### **`TimeField`**
+**签名：** `TimeField(format=api_settings.TIME_FORMAT, input_formats=None)`
+- `format` - 输出格式。默认值由 `TIME_FORMAT` 设置决定，通常是 `iso-8601`。可以设置为 `None`，此时返回 `datetime` 对象，由渲染器决定最终格式。
+- `input_formats` - 输入格式列表。默认值由 `TIME_INPUT_FORMATS` 设置决定，通常是 `['iso-8601']`。
+同上。
+
+##### **`DurationField`**
+**签名：** `DurationField(max_value=None, min_value=None)`
+- `max_value` 验证提供的持续时间是否不大于此值，接收`datetime.timedelta`对象。
+- `min_value` 验证提供的持续时间是否不小于此值，接收`datetime.timedelta`对象。
+
+`DurationField` 接受字符串格式的时间间隔，例如 `'[DD] [HH:[MM:]]ss[.uuuuuu]'`。例如：`'1 day, 2:30:45'` 表示 1 天 2 小时 30 分 45 秒。如果用户提交的值是 `'1 day, 2:30:45'`，则会解析为 `datetime.timedelta(days=1, hours=2, minutes=30, seconds=45)`。
+
+#### 选择选项字段
+##### **`ChoiceField`**
+如果相应的模型字段包含 `choices=...` 参数，则由`ModelSerializer` 用于自动生成字段。
+**签名：**`ChoiceField(choices)`
+- `choices` - 有效值的列表，或 `(key, display_name)` 元组的列表。
+- `allow_blank` - 如果设置为 `True`，则空字符串应被视为有效值。如果设置为 `False`，则空字符串被视为无效，并将引发验证错误。默认为 `false`。
+- `html_cutoff` - 如果设置，这将是 HTML 选择下拉列表显示的最大选项数。可用于确保自动生成的具有非常大的可能选择的 ChoiceFields 不会阻止模板呈现。默认为 `None`。
+- `html_cutoff_text` - 如果设置，如果 HTML 选择下拉列表中已截断最大项目数，则将显示文本指示器。默认为 `“超过 {count} 项...”`
+
+`allow_blank` 和 `allow_null` 都是 `ChoiceField` 上的有效选项，但强烈建议您只使用一个选项，而不是同时使用两个选项。文本选择应首选 `allow_blank`，数字或其他非文本选择应首选 `allow_null`。
+
+##### **`MultipleChoiceField`**
+同上。在验证器中收到的值是一个包含了用户所选项的列表，验证通过返回的也是这个列表。前端需要传入数组。
+
+#### 文件上传字段
+使用这两个字段时，前端应该使用`'Content-Type': 'multipart/form-data'`
+
+##### **`FileField`**
+**签名：**`FileField(max_length=None, allow_empty_file=False, use_url=UPLOADED_FILES_USE_URL)`
+- `max_length` - 文件名的最大长度
+- `allow_empty_file` - 是否允许上传空文件
+- `use_url` - 如果为 `True`，则输出文件的 URL；如果为 `False`，则输出文件名。默认为`True`。
+
+##### **`ImageField`**
+**签名：**`ImageField(max_length=None, allow_empty_file=False, use_url=UPLOADED_FILES_USE_URL)`
+同上。使用`ImageField`需要`Pillow`配合工作。用于验证上传的文件是否为有效的图像格式，并提供图像处理功能。
+
+#### 复合字段
+##### **`ListField`**
+**签名：**`ListField(child=<A_FIELD_INSTANCE>, allow_empty=True, min_length=None, max_length=None)`
+- `child` - 指定列表中每个元素的字段类型，必须是一个字段实例。
+- `allow_empty` - 是否允许空列表。默认为 `True`。
+- `min_length` - 列表的最小长度。如果设置，列表长度不能小于该值。
+- `max_length` - 列表的最大长度。如果设置，列表长度不能大于该值。
+
+例如：
+```python
+tags = serializers.ListField(child=serializers.CharField(max_length=100))
+```
+
+##### **`DictField`**
+**签名：**`DictField(child=<A_FIELD_INSTANCE>, allow_empty=True)`
+- `child` - 指定字典中每个值的字段类型，必须是一个字段实例。
+- `allow_empty` - 是否允许空字典。默认为 `True`。
+
+##### **`JSONField`**
+**签名：**`JSONField(binary=False, encoder=None)`
+- `binary` - 如果为 `True`，则输入和输出都以 JSON 字符串形式处理。默认为 `False`。
+- `encoder` - 自定义 JSON 编码器，用于序列化输出。默认为 `None`。
+
+##### **`HStoreField`**
+**签名：**`HStoreField(child=<A_FIELD_INSTANCE>, allow_empty=True)`
+- **`child`**：指定字典中每个值的字段类型，必须是一个字段实例。默认情况下，`HStoreField` 使用 `CharField` 作为子字段，允许值为字符串类型。
+- **`allow_empty`**：是否允许空字典。默认为 `True`。
+`HStoreField` 是 DRF 提供的一个字段类型，用于处理 PostgreSQL 的 `HStoreField` 数据类型。`HStoreField` 是一个键值对字典，其中键是字符串，值也是字符串。它非常适合存储非结构化的键值对数据。
+
+#### 特殊字段
+
+##### **`ReadOnlyField`**
+**签名** ：`ReadOnlyField()`
+用于表示只读字段，这些字段在序列化时会输出，但在反序列化时不会被处理。**专用于模型属性/方法**（如 `@property`、无参方法），这些字段不需要用户输入，但需要在输出时显示。
+例如：
+```python
+expiry_date = ReadOnlyField(source='get_expiry_date')
+```
+通常来说不需要手动指定这个类型，例如，如果 `has_expired` 是 `Account` 模型上的属性（`@property`），则以下序列化程序会自动将其生成为 `ReadOnlyField`：
+```python
+class AccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Account
+        fields = ['id', 'account_name', 'has_expired']
+```
+- **模型字段** → 用普通字段 + `read_only=True`
+- **模型属性/方法** → 用 `ReadOnlyField` + 指定 `source`
+
+##### **`HiddenField`**
+**签名：**`HiddenField(default=...)`
+用于隐藏字段，这些字段在序列化时不会输出，但在反序列化时会使用默认值。通常用于需要在反序列化时自动填充的字段，但不需要用户输入。
+例如：
+```python
+created_by = serializers.HiddenField(default=serializers.CurrentUserDefault())
+```
+**注意：**`HiddenField()` 不会出现在 `partial=True` 序列化器中（当发出 `PATCH` 请求时）。
+
+##### **`ModelField`**
+**签名：** `ModelField(model_field=<Django ModelField instance>)`
+用于将任意 Django 模型字段桥接到序列化器字段。通常用于自定义模型字段，这些字段需要特殊的验证逻辑。
+`ModelField` 类通常供内部使用，但如果需要，您的 API 也可以使用该类。为了正确实例化 `ModelField`，必须向它传递一个附加到实例化模型的字段。例如： `ModelField(model_field=MyModel()._meta.get_field('custom_field'))`
+
+##### **`SerializerMethodField`**
+**签名** ： `SerializerMethodField(method_name=None)`
+- `method_name` - 指定方法名，默认为 `get_<field_name>`。
+用于表示只读字段，这些字段的值通过调用序列化器上的方法动态生成。通常用于需要动态计算的字段，这些字段不需要用户输入，但需要在输出时显示。
+方法名必须以 `get_` 开头，接收一个参数 `obj`，返回字段的值。例如：
+```python
+class ProfileSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Profile
+        fields = ['id', 'first_name', 'last_name', 'full_name']
+
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}"
+```
+
+#### 自定义字段
+如果需要自定义字段，则需要继承`serializers.Field`，然后实现两个关键的钩子函数，`to_representation(self, value)`和`to_internal_value(self, data)`，例如：
+```python
+from rest_framework import serializers
+from django.core.exceptions import ValidationError
+
+class ColorField(serializers.Field):
+    def to_representation(self, value: 'Color'):
+        # 模型 -> JSON
+        return f"rgb({value.r},{value.g},{value.b})"
+
+    def to_internal_value(self, data):
+        # JSON -> 模型
+        if not isinstance(data, str) or not data.startswith("rgb("):
+            raise ValidationError("格式必须为 rgb(r,g,b)")
+        try:
+            r, g, b = map(int, data[4:-1].split(","))
+        except ValueError:
+            raise ValidationError("rgb 值必须为整数")
+        return Color(r, g, b)
+```
+
+
+
+#### 序列化字段与模型字段对照表
+
+| 序列化字段          | 模型字段                                                                          |
+| -------------- | ----------------------------------------------------------------------------- |
+| BooleanField   | BooleanField                                                                  |
+| CharField      | CharField、TextField                                                           |
+| EmailField     | EmailField                                                                    |
+| RegexField     | RegexField                                                                    |
+| SlugField      | SlugField                                                                     |
+| URLField       | URLField                                                                      |
+| FilePathField  | FilePathField                                                                 |
+| IPAddressField | IPAddressField、GenericIPAddressField                                          |
+| IntegerField   | IntegerField、SmallIntegerField、PositiveIntegerField、PositiveSmallIntegerField |
+| FloatField     | FloatField                                                                    |
+| DecimalField   | DecimalField                                                                  |
+| DateTimeField  | DateTimeField                                                                 |
+| DateField      | DateField                                                                     |
+| TimeField      | TimeField                                                                     |
+| DurationField  | DurationField                                                                 |
+| FileField      | FileField                                                                     |
+| ImageField     | ImageField                                                                    |
+
+
+
+
+#### 字段构造器公共参数
+
+| 参数                | 类型   | 说明          | 示例                               |
+| ----------------- | ---- | ----------- | -------------------------------- |
+| read_only         | bool | 仅序列化输出      | read_only=True                   |
+| write_only        | bool | 仅反序列化输入     | write_only=True                  |
+| required          | bool | 反序列化时是否必填   | required=False                   |
+| allow_null        | bool | 是否接受 None   | allow_null=True                  |
+| default           | 任意   | 缺失时的默认值     | default=''                       |
+| source            | str  | 指定属性路径      | source='user.profile.avatar.url' |
+| validators        | list | 自定义验证器      | validators=[my_func]             |
+| error_messages    | dict | 自定义错误文案     | error_messages={'blank': '不能为空'} |
+| style             | dict | HTML 表单渲染提示 | style={'input_type': 'password'} |
+| label / help_text | str  | 元信息         | label='标题'                       |
+
+#### `source`参数详解
+
+```python
+class UserSerializer(serializers.Serializer):
+    # 前端看到的是 nickName，实际取模型字段 username
+    nickName = serializers.CharField(source='username')
+    
+	author_name = serializers.CharField(source='author.username')  # 跨关联对象（点语法）
+
+```
+
+**字典/列表/方法**
+
+- 字典：`source='dict_key'`
+- 方法：`source='get_full_name'`（DRF 会自动调用无参方法）
+- 列表索引：`source='tags.0.name'`（DRF 3.12+）
+
+**只读计算字段**
+
+```python
+class OrderSerializer(serializers.Serializer):
+    total_price = serializers.DecimalField(
+        max_digits=10, decimal_places=2,
+        source='calc_total', read_only=True
+    )
+```
+
+模型里：
+
+```python
+class Order(models.Model):
+    ...
+    def calc_total(self):
+        return sum(item.price for item in self.items.all())
+```
+
+- 对外暴露 `total_price`，内部实际调用 `order.calc_total()`。
+
+与`SerializerMethodField`的区别是：`source` 只能**静态映射**某个已有属性/方法，而 `SerializerMethodField` 让你**完全自定义**一段 Python 代码来计算值，自由度更高，但永远是只读
+
+| 维度         | `source='xxx'`            | `SerializerMethodField`         |
+| ---------- | ------------------------- | ------------------------------- |
+| **数据来源**   | 必须能写成 **属性链** 或 **无参方法名** | 任意 Python 逻辑（ORM、调用服务、聚合计算……）   |
+| **可否反向写入** | ✅ 如果映射到可写字段               | ❌ 永远只读                          |
+| **代码位置**   | 声明字段时一次性写完                | 单独写 `get_<field>(self, obj)` 方法 |
+| **可读性**    | 简单场景直观                    | 复杂逻辑更清晰                         |
+| **性能**     | ORM 会连带 select            | 自己控制 queryset 优化                |
+
+### 常见踩坑提示
+
+1. DateTimeField 带微秒的字符串反序列化失败 → 设置 `format='%Y-%m-%d %H:%M:%S.%f'`。
+2. 外键字段默认是 PrimaryKeyRelatedField，前端需要传 ID；若想传 slug，改用 SlugRelatedField(slug_field='slug')。
+3. 在 ModelSerializer 里给字段加 validators 会 **覆盖** 模型层的 validators，除非显式 extend。
+4. Serializer.save() 只有在调用 is_valid() 后才能用，否则抛 ValueError。
+5. 上传文件时，确保视图 parser_classes 包含 MultiPartParser / FormParser。
 
 ## 认证
+这部分的作用仅仅是标识当前请求的发出者，并不负责允许或不允许传入请求，即权限校验部分。
+
+身份验证方案是定定义为类列表，REST 框架将尝试对列表中的每个类进行身份验证，并将使用成功进行身份验证的**第一个类**的返回值设置 `request.user` 和 `request.auth`。
+
+如果没有类进行身份验证， 则`request.user` 将设置为 `django.contrib.auth.models.AnonymousUser` 的实例，并且 `request.auth` 将设置为 `None`。
+
+对于未经身份验证的请求，可以使用 `UNAUTHENTICATED_USER` 和 `UNAUTHENTICATED_TOKEN` 设置修改 `request.user` 和 `request.auth` 的值。
+
+### 设置身份验证方案
+```python
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.BasicAuthentication',  # 通常来说都不用这个
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',  # 例如需要jwt登录方案
+    ]
+}
+```
+
+在层级比较低的APIView中即可使用
+```python
+class ExampleView(APIView):
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
+    permission_classes = [IsAuthenticated]
+```
+
+或者基于FBV的使用
+```python
+@api_view(['GET'])
+@authentication_classes([SessionAuthentication, BasicAuthentication])
+@permission_classes([IsAuthenticated])
+def example_view(request, format=None):
+    content = {
+        'user': str(request.user),  # `django.contrib.auth.User` instance.
+        'auth': str(request.auth),  # None
+    }
+    return Response(content)
+```
+
+当未经身份验证的请求被拒绝权限时，可能会返回两种不同的错误代码。
+- HTTP 401 未授权
+- HTTP 403 权限被拒绝
+
+当返回401时，响应必须包含 `WWW-Authenticate`请求头，它的作用是告诉客户端如何进行身份验证。但403不应该包含 `WWW-Authenticate`请求头。
+
+虽然一次请求里可以配置多个验证类，但最终只会按照第一个成功返回或抛出错误的类响应。例如现在配置了`[JWTAuthentication, SessionAuthentication]`，`JWTAuthentication`验证失败，如果此时直接抛出`AuthenticationFailed`并自带 `WWW-Authenticate: Bearer...`，就会**立即返回 401 + Bearer 头**，**不会继续尝试** `SessionAuthentication`，也不会把错误类型改成 403。但是如果`JWTAuthentication`返回 `None`（不抛异常），就会执行`SessionAuthentication`的校验逻辑，只要中间任一成功，就立即成功，后续类不再执行。
+
+请注意，当请求可以成功进行身份验证，但仍被拒绝执行请求的权限时，在这种情况下，将始终使用 `403 Permission Denied` 响应，而不管身份验证方案如何。
+
 
 ## 权限
+权限与认证一起配合，决定这个请求是放行还是拒绝。权限检查始终在视图的前面运行，然后才允许任何其他代码继续执行。权限检查通常会使用 `request.user` 和 `request.auth` 属性中的身份验证信息来确定是否应允许传入请求。权限用于授予或拒绝不同类别的用户对 API 不同部分的访问权限。
+
+最简单的权限样式是允许对任何经过身份验证的用户进行访问，并拒绝对任何未经身份验证的用户进行访问。这对应于 REST 框架中的 `IsAuthenticated` 类。
+
+稍微不那么严格的权限样式是允许对经过身份验证的用户进行完全访问，但允许对未经身份验证的用户进行只读访问。这对应于 REST 框架中的 `IsAuthenticatedOrReadOnly` 类。
+
+在运行具体的视图函数之前，会检查权限类列表里的每个权限，如果有任何一个权限类检查失败（返回False或抛出错误），则直接拦截并返回错误信息，后面的权限类不再执行。
+
+所有权限类的基类签名如下：
+```python title:BasePermission
+class BasePermission(metaclass=BasePermissionMetaclass):
+    """
+    A base class from which all permission classes should inherit.
+    """
+
+    def has_permission(self, request, view):
+        """
+        Return `True` if permission is granted, `False` otherwise.
+        """
+        return True
+
+    def has_object_permission(self, request, view, obj):
+        """
+        Return `True` if permission is granted, `False` otherwise.
+        """
+        return True
+```
+
+其中最关键的就是这两个抽象方法。
+视图级检查`has_permission`会在请求进入时自动调用，`has_object_permission`会在调用`get_object()`时调用，通常用于详情 retrieve / 更新 update / 删除 destroy。
+
+注意：获取列表的场景不会调用`has_object_permission`，因为会性能爆炸，列表场景的权限应该靠`get_queryset`的过滤实现。创建场景也不会调用。
+
+如果想要限制谁可以创建有两个常规做法，在Serialzer里做校验（字段级或者validate()），或者重写`ViewSet.perform_create()`
+
+权限类只要是继承自`rest_framework.permissions.BasePermission`的，就可以使用位运算符进行权限组合，例如`permission_classes = [IsAuthenticated|ReadOnly]`，它支持 `&`（与），`|`（或）和`~`（非）。
 
 ## 缓存
+Django 提供了一个 `method_decorator`，可以将装饰器与CBV一起使用。这可以与其他缓存装饰器一起使用，例如 `cache_page`、 `vary_on_cookie` 和 `vary_on_headers`。FBV只需要直接把装饰器打在方法上就行了。
+例如：
+```python
+
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_cookie, vary_on_headers
+
+from rest_framework.response import Response
+from rest_framework import viewsets
+
+
+class UserViewSet(viewsets.ViewSet):
+    # With cookie: cache requested url for each user for 2 hours
+    @method_decorator(cache_page(60 * 60 * 2))
+    @method_decorator(vary_on_cookie)
+	@method_decorator(vary_on_headers("Authorization"))
+    def list(self, request, format=None):
+        content = {
+            "user_feed": request.user.get_user_feed(),
+        }
+        return Response(content)
+
+```
+
+**注意：**`cache_page` 装饰器仅缓存 状态为 200 的 `GET` 和 `HEAD` 响应。
+
+### cache_page
+**作用**：把视图（或 URLConf）的**完整响应**缓存起来，下一次命中直接返回 HTML，**不执行视图代码**。
+
+### vary_on_cookie
+**作用**：告诉缓存系统：**“不同 Cookie 值视为不同页面”**，防止「A 用户登录后看到 B 用户缓存页面」。
+
+### vary_on_headers
+**作用**：按任意 **HTTP 请求头** 区分缓存，比 `Cookie` 更通用。
+
+Django 的 `vary_on_cookie` / `vary_on_headers` 本质上就是在响应里加一条
+```
+Vary: Cookie
+# 或
+Vary: User-Agent, Accept-Language
+```
+
+缓存中间件 **只按 `Vary` 头里列出的字段** 生成缓存键；  
+浏览器、CDN、反向代理（如 Nginx、Varnish、Cloudflare）也都遵循 **HTTP 规范**，用 **同样的 `Vary` 字段** 判断是否命中缓存。
 
 ## 限流
+限流这个功能比较微妙，很多时候其实用不上限流
+
+首先需要说明自定义基类的属性和方法，再说明官方三个限流类的作用，再看用法才能看懂
+
+首先，官方的三个类都继承自`SimpleRateThrottle`，我们自定义限流类也基本是继承这个。
+
+### SimpleRateThrottle
+```python
+class SimpleRateThrottle(BaseThrottle):
+    """
+    A simple cache implementation, that only requires `.get_cache_key()`
+    to be overridden.
+
+    The rate (requests / seconds) is set by a `rate` attribute on the Throttle
+    class.  The attribute is a string of the form 'number_of_requests/period'.
+
+    Period should be one of: ('s', 'sec', 'm', 'min', 'h', 'hour', 'd', 'day')
+
+    Previous request information used for throttling is stored in the cache.
+    """
+    cache = default_cache
+    timer = time.time
+    cache_format = 'throttle_%(scope)s_%(ident)s'
+    scope = None
+    THROTTLE_RATES = api_settings.DEFAULT_THROTTLE_RATES
+
+    def __init__(self):
+        if not getattr(self, 'rate', None):
+            self.rate = self.get_rate()
+        self.num_requests, self.duration = self.parse_rate(self.rate)
+```
+
+**属性**
+
+| 属性               | 类型         | 作用                                                                                |
+| ---------------- | ---------- | --------------------------------------------------------------------------------- |
+| `cache`          | Django缓存实例 | 保存请求历史时间戳的存储后端。默认=`default_cache`（即`CACHES['default']`）。想换 Redis 直接换 `CACHES` 即可。 |
+| `timer`          | 可调用对象      | 取当前时间的函数。默认=`time.time`（秒级浮点）。测试时可 MonkeyPatch 成 `lambda: 1234567890` 做时间冻结。      |
+| `cache_format`   | str        | 生成缓存 key 的模板。`%(scope)s` 和 `%(ident)s` 会被替换，例如 `throttle_user_42`。                |
+| `scope`          | str/None   | 当前限流器的“命名空间”。**必须**在子类里设置，或显式传 `rate=`。                                           |
+| `THROTTLE_RATES` | dict       | 从 `api_settings.DEFAULT_THROTTLE_RATES` 读取配置，例如 `{'upload': '10/min'}`。           |
+
+实际上，`scope`就是用来获取这个限流类真正限制速率（`rate`）的key，所以要么直接设置`rate`，要么通过`scope`获得`rate`。
+
+
+**方法**
+
+| 名称                             | 作用                                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `__init__()`                   | 把 `rate` 字符串解析成 `(num_requests, duration)` 两个整数，供后面做比较。                                    |
+| `get_cache_key(request, view)` | **必须**被子类覆盖；返回一个唯一字符串作为缓存键，或返回 `None` 表示“此请求不限流”。                                          |
+| `get_rate()`                   | 若子类没写 `rate = '5/m'`，则按 `self.scope` 去 `THROTTLE_RATES` 里查配置。找不到就抛 `ImproperlyConfigured`。 |
+| `parse_rate(rate)`             | 把 `'5/min'` 拆成 `(5, 60)`；把 `'100/d'` 拆成 `(100, 86400)`。                                    |
+| `allow_request(request, view)` | **真正判断是否放行**：<br>1. 取 key → 2. 读历史 → 3. 清过期 → 4. 计数 → 5. 成功/失败。                            |
+| `throttle_success()`           | 把当前时间戳插入缓存列表，并重新写回缓存（带过期时间）。                                                               |
+| `throttle_failure()`           | 直接返回 `False`，给 DRF 抛 `Throttled` 异常。                                                       |
+| `wait()`                       | 返回客户端需要等待的秒数（用于 `Retry-After` 响应头）。                                                        |
+
+**配置**
+```python title:setting.py
+# 全局生效
+REST_FRAMEWORK = {
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',  # 指定限流类
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/day',  # 指定限流类所限制的速率，其中的key来自于限流类的类属性scope
+        'user': '1000/day'
+    }
+}
+
+# 如
+class BurstRateThrottle(UserRateThrottle):
+    scope = 'burst'
+
+```
+
+
+### AnonRateThrottle
+`AnonRateThrottle`只会限制未经身份验证的用户。传入请求的 IP 地址用于生成要限制的唯一密钥。
+
+允许的请求速率由以下选项之一确定（按优先顺序）。
+- 类上的 `rate` 属性，可以通过重写 `AnonRateThrottle` 并设置属性来提供。
+- `DEFAULT_THROTTLE_RATES['anon']` 设置。其中`anon`是`AnonRateThrottle`默认的`scope`
+
+`AnonRateThrottle` 适用于要限制来自未知来源的请求速率。
+
+### UserRateThrottle
+`UserRateThrottle` 会将用户限制为跨 API 的给定请求速率。用户 ID 用于生成要限制的唯一密钥。未经身份验证的请求将回退为使用传入请求的 IP 地址来生成要限制的唯一密钥。
+
+允许的请求速率由以下选项之一确定（按优先顺序）。
+- 类上的 `rate` 属性，可以通过重写 `UserRateThrottle` 并设置属性来提供。
+- `DEFAULT_THROTTLE_RATES['user']` 设置。其中`user`是`UserRateThrottle`默认的`scope`
+
+### ScopedRateThrottle
+`ScopedRateThrottle`用于限制所有配置了同一个`scope`的API。仅当正在访问的视图包含 `.throttle_scope` 属性时，才会应用此限制。然后，通过将请求的`scope`与唯一的用户 ID 或 IP 地址连接起来，形成唯一的节流键。
+
+```python
+# 对视图应用限流类
+class ReportView(APIView):
+    throttle_classes = [UserRateThrottle]   # 只对这个视图生效
+    throttle_scope   = "report"             # 与 ScopedRateThrottle 配合，同样的，也需要在DEFAULT_THROTTLE_RATES配置report: xxx/day或其他
+```
+
+### 自定义限流类
+可以继承`BaseThrottle`，并实现`.allow_request(self, request, view)`方法，如果通过，则应该返回`True`，否则返回`False`。
+还可以覆盖`wait()`方法，如果实现了这个方法，应该返回建议的秒数，以便于在尝试下个请求之前等待。仅当`.allow_request()`返回`False`时，才会调用`wait()`，如果实现了`wait()`且方法受到了流控，则响应中会包含`Retry-After`请求头。
 
 ## 过滤
 
@@ -1302,10 +2464,11 @@ REST 框架的通用列表视图的默认行为是返回模型管理器的整个
 
 安装：
 
-```
+```shell
 pip install django-filter
+```
 
-
+```python
 INSTALLED_APPS = [
     ...
     'django_filters',
@@ -1536,6 +2699,86 @@ class UserListView(generics.ListAPIView):
 `ordering` 属性可以是字符串或字符串列表/元组。
 
 ---
+#### 可重命名的排序字段
+由于官方提供的排序过滤器支持的名称是模型字段名称，如果此时发生了连表，就会暴露中间的连表字段，比如`ordering_fields = ['user__org__org_type']`，也不方便前端传入，因此开发了一个可以支持别名的排序过滤器。
+
+```python title:AliasedOrderingFilter
+class AliasedOrderingFilter(filters.OrderingFilter):  # drf的filters.OrderingFilter
+    """
+    支持：
+    1) ordering_fields = ['id', 'name']          # 传统
+    2) ordering_fields = {'alias': 'real', ...}  # 别名
+    3) ordering_fields = '__all__'               # 父类原生
+    """
+	def get_ordering_fields(self, view):
+        return getattr(view, 'ordering_fields', self.ordering_fields)
+
+	def get_valid_fields(self, queryset, view, context={}):
+        valid_fields = self.get_ordering_fields(view)
+
+        if valid_fields is None:
+            # Default to allowing filtering on serializer fields
+            return self.get_default_valid_fields(queryset, view, context)
+
+        elif valid_fields == '__all__':
+            # View explicitly allows filtering on any model field
+            valid_fields = [
+                (field.name, field.verbose_name) for field in queryset.model._meta.fields
+            ]
+            valid_fields += [
+                (key, key.title().split('__'))
+                for key in queryset.query.annotations
+            ]
+        # 新增对字典类型的支持
+        elif isinstance(valid_fields, dict):
+            valid_fields = [
+                (real, alias) for alias, real in valid_fields
+            ]
+        else:
+            valid_fields = [
+                (item, item) if isinstance(item, str) else item
+                for item in valid_fields
+            ]
+
+        return valid_fields
+
+    def get_ordering(self, request, queryset, view):
+		params = request.query_params.get(self.ordering_param)
+        if not params:
+            return self.get_default_ordering(view)
+
+        # 统一成映射表
+        fields = self.get_ordering_fields(view)
+        alias_map = fields if isinstance(fields, dict) else {}
+
+        ordering = []
+        for field in (f.strip() for f in params.split(',')):
+            descending = field.startswith('-')
+            alias = field.lstrip('-')
+
+            # 先翻译别名
+            real = alias_map.get(alias, alias)
+            ordering.append(('-' if descending else '') + real)
+
+        # 让父类剔除无效字段
+		return self.remove_invalid_fields(queryset, ordering, view, request)
+
+
+class XXXViewSet(viewsets.ModelViewSet):
+    filter_backends = [filters.DjangoFilterBackend, AliasedOrderingFilter, SearchFilter]  # 这里使用自定义的AliasedOrderingFilter
+
+    # 在这里指定前端传入应该映射到哪个真实字段
+    ordering_fields = {
+        'status': 'status',  # 相同的映射也要明确写出
+        'username': 'organisation__name',
+        'org_name': 'organisation__billing_company_name',
+        'software': 'software__name',
+        'license': 'data',
+        'applied_at': 'applied_at',
+    }
+```
+
+---
 
 #### 自定义FilterSet（使用django-filters）
 
@@ -1643,6 +2886,9 @@ class UserFilter(django_filters.FilterSet):
 `Meta.fields` 是必须的，哪怕显式定义了过滤器字段也必须把这些名字全都写进去，更推荐全部使用显式声明过滤器。
 `Meta.fields` 使用`fields = '__all__'`这种写法包含模型的全部字段。
 `Meta.exclude`将排除声明的字段，将模型中其他字段都加入过滤器中。不可以同时指定`exclude`和`fields`。
+
+**小坑**
+如果使用filters.UUIDFilter，就只能使用精确匹配（`exact`），前端必须传入 **完整且格式正确的 UUID 字符串**。任何试图改成 `icontains`、`contains`、`iexact` 都会触发 PostgreSQL 的`function upper(uuid) does not exist`。想模糊匹配：改用 `CharFilter` 并承担性能损耗，或在前端限制用户输入完整 UUID。
 
 ## 分页
 
