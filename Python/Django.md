@@ -555,6 +555,200 @@ return Response(serializer.data)
 
 注意：data不能直接传入`Serializer`对象，必须调用`serializer.data`
 
+### 集成trace_id
+创建trace_utils工具集
+```python title:trace_utils.py
+import uuid  
+from contextvars import ContextVar  
+  
+trace_id_var: ContextVar[str] = ContextVar("trace_id", default="")  
+  
+def get_trace_id() -> str:  
+    return trace_id_var.get()  
+  
+def set_trace_id(trace_id: str) -> None:  
+    trace_id_var.set(trace_id)  
+  
+def generate_trace_id() -> str:  
+    return uuid.uuid4().hex
+```
+
+在统一返回类中添加`trace_id`字段
+```python title:common_response.py hl:11,42,74
+from __future__ import annotations  
+  
+from dataclasses import dataclass  
+from enum import Enum  
+from typing import Optional, Any  
+  
+from django.utils.translation import gettext_lazy as _  
+from rest_framework import serializers, status  
+from rest_framework.response import Response  
+  
+from utils.trace_utils import get_trace_id  
+  
+  
+# ---------- 1. 枚举 ----------
+@dataclass(frozen=True)  
+class _Info:  
+    code: int  
+    detail: str      # 实际类型是 __proxy__，但当作 str 使用  
+  
+class RespCode(Enum):  
+    OK  = _Info(200, _("success"))  
+    BAD = _Info(400, _("bad request"))  
+    UNAUTHORIZED = _Info(401, _("unauthorized"))  
+    FORBIDDEN = _Info(403, _("forbidden"))  
+    NOT_FOUND = _Info(404, _("not found"))  
+    SERVER_ERROR = _Info(500, _("server error"))  
+  
+    @property  
+    def code(self) -> int:  
+        return self.value.code  
+  
+    @property  
+    def detail(self) -> str:  
+        return str(self.value.detail)  # 自动触发 __str__  
+  
+# ---------- 2. 序列化器 ----------
+class CommonResponseSerializer(serializers.Serializer):  
+    status = serializers.BooleanField()  
+    code = serializers.IntegerField()  
+    detail = serializers.CharField(allow_blank=True)  
+    data = serializers.JSONField(required=False, allow_null=True)  
+    trace_id = serializers.CharField(required=False, allow_blank=True)  
+  
+  
+# ---------- 3. 统一响应 ----------
+class CommonResponse(Response):  
+    """  
+    统一返回对象  
+    用法：  
+        CommonResponse()
+		CommonResponse(code=RespCode.NOT_FOUND)
+		CommonResponse.ok(data={"id": 1})
+		CommonResponse.fail(code=RespCode.BAD_REQUEST, detail="missing name")
+	"""  
+    def __init__(  
+        self,  
+        status: bool = True,  
+        code: RespCode = RespCode.OK,  
+        detail: Optional[str] = None,  
+        data: Any = None,  
+        *,  
+        http_code: int = status.HTTP_200_OK,  
+    ):  
+        # 未显式 detail 时取枚举默认值  
+        if detail is None:  
+            detail = code.detail  
+  
+        ser = CommonResponseSerializer(  
+            data={  
+                "status": status,  
+                "code": code.code,  
+                "detail": detail,  
+                "data": data,  
+                "trace_id": get_trace_id(),  
+            }  
+        )  
+        ser.is_valid(raise_exception=True)  
+        super().__init__(data=ser.data, status=http_code)  
+  
+    # 快捷方法  
+    @classmethod  
+    def ok(  
+        cls,  
+        data: Any = None,  
+        code: RespCode = RespCode.OK,  
+        *,  
+        detail: Optional[str] = None,  
+        http_code: int = status.HTTP_200_OK  
+    ) -> CommonResponse:  
+        return cls(status=True, code=code, detail=detail, data=data, http_code=http_code)  
+  
+    @classmethod  
+    def fail(  
+        cls,  
+        detail: Optional[str] = None,  
+        code: RespCode = RespCode.BAD,  
+        *,  
+        data: Any = None,  
+        http_code: int = status.HTTP_400_BAD_REQUEST  
+    ) -> CommonResponse:  
+        return cls(status=False, detail=detail, data=data, code=code, http_code=http_code)
+```
+
+添加中间件
+```python title:middlewares.py
+from django.utils.deprecation import MiddlewareMixin  
+from .trace_utils import generate_trace_id, set_trace_id, get_trace_id  
+  
+class TraceIdMiddleware(MiddlewareMixin):  
+    """  
+    每个请求进来时：  
+      1. 先从 X-Trace-Id 头部读取（方便链路串联），没有则生成  
+      2. 保存到 contextvars
+      3. 在响应里加回 X-Trace-Id 头部  
+    """  
+    def process_request(self, request):  
+        trace_id = request.META.get("HTTP_X_TRACE_ID") or generate_trace_id()  
+        set_trace_id(trace_id)  
+        request.trace_id = trace_id  # 方便在视图里直接用  
+  
+    def process_response(self, request, response):  
+        trace_id = get_trace_id()  
+        response["X-Trace-Id"] = trace_id  
+        return response
+```
+
+添加logging_filters
+```python title:logging_filters.py
+import logging  
+from .trace_utils import get_trace_id  
+  
+class TraceIdFilter(logging.Filter):  
+    def filter(self, record: logging.LogRecord) -> bool:  
+        record.trace_id = get_trace_id()  
+        return True
+```
+
+在配置中注册中间件和logging的设置
+```python title:setting.py hl:3,11,17
+MIDDLEWARE = [  
+	...
+    'utils.middlewares.TraceIdMiddleware',  
+]
+
+LOGGING = {  
+    "version": 1,  
+    "disable_existing_loggers": False,  
+    "formatters": {  
+        "verbose": {  
+            "format": "[{asctime}] {levelname} {name} trace_id={trace_id} {message}",  
+            "style": "{",  
+        },  
+    },  
+    "filters": {  
+        "trace_id": {  
+            "()": "utils.logging_filters.TraceIdFilter",  
+        },  
+    },  
+    "handlers": {  
+        "console": {  
+            "class": "logging.StreamHandler",  
+            "formatter": "verbose",  
+            "filters": ["trace_id"],  
+        },  
+    },  
+    "root": {  
+        "handlers": ["console"],  
+        "level": "INFO",  
+    },  
+}
+```
+
+在视图中使用`logging.info(xxx)`将自动带上`trace_id`
+
 ## 视图
 
 视图大体上分为两类：`CBV`(基于类的视图)和`FBV`(基于方法的视图)
@@ -1330,54 +1524,6 @@ serializer.data
 ### Serializer
 
 通常来说`Serializer`接收的是与数据库对象无关的数据，比如`CommonResponse`之类的
-
-```python title:CommonResponse
-from rest_framework import serializers
-from rest_framework.response import Response
-
-# -------------------------------------------------
-# 1. Universal response serializer
-# -------------------------------------------------
-class CommonResponseSerializer(serializers.Serializer):
-    """data field accepts any type"""
-    status = serializers.BooleanField()
-    detail = serializers.CharField(allow_blank=True)
-    data   = serializers.JSONField(required=False, allow_null=True)
-
-
-# -------------------------------------------------
-# 2. CommonResponse class
-# -------------------------------------------------
-class CommonResponse(Response):
-    """
-    CommonResponse class
-    usage：
-        return CommonResp(True, 'OK', obj)                             # default 200
-        return CommonResp.fail(detail='param error', http_code=400)    # 400
-        return CommonResp.ok(data=new_obj, http_code=201)              # 201
-    """
-    def __init__(self,
-                 status=True,
-                 detail='success',
-                 data=None,
-                 *,
-                 http_code=200,
-                 ):
-        ser = CommonResponseSerializer(data={'status': status,
-                                             'detail': detail,
-                                             'data': data})
-        ser.is_valid(raise_exception=True)
-        super().__init__(data=ser.data, status=http_code)
-
-    # ---- shortcut methods ----
-    @classmethod
-    def ok(cls, detail='success', data=None, *, http_code=200):
-        return cls(True, detail, data, http_code=http_code)
-
-    @classmethod
-    def fail(cls, detail='error', data=None, *, http_code=400):
-        return cls(False, detail, data, http_code=http_code)
-```
 
 #### 字段级验证
 
