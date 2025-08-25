@@ -555,7 +555,7 @@ return Response(serializer.data)
 
 注意：data不能直接传入`Serializer`对象，必须调用`serializer.data`
 
-### 集成trace_id
+### 统一返回类（集成trace_id）
 创建trace_utils工具集
 ```python title:trace_utils.py
 import uuid  
@@ -680,24 +680,31 @@ class CommonResponse(Response):
 
 添加中间件
 ```python title:middlewares.py
-from django.utils.deprecation import MiddlewareMixin  
+from django.http import HttpRequest, HttpResponse  
+  
 from .trace_utils import generate_trace_id, set_trace_id, get_trace_id  
   
-class TraceIdMiddleware(MiddlewareMixin):  
+class TraceIdMiddleware:  
     """  
     每个请求进来时：  
       1. 先从 X-Trace-Id 头部读取（方便链路串联），没有则生成  
-      2. 保存到 contextvars
-      3. 在响应里加回 X-Trace-Id 头部  
+      2. 保存到 contextvars  
+	  3. 在响应里加回 X-Trace-Id 头部  
     """  
-    def process_request(self, request):  
+    def __init__(self, get_response) -> None:  
+        self.get_response = get_response  
+  
+    def __call__(self, request: HttpRequest) -> HttpResponse:  
+        # 1. 生成/提取 trace_id        
         trace_id = request.META.get("HTTP_X_TRACE_ID") or generate_trace_id()  
         set_trace_id(trace_id)  
-        request.trace_id = trace_id  # 方便在视图里直接用  
+        request.trace_id = trace_id  
   
-    def process_response(self, request, response):  
-        trace_id = get_trace_id()  
-        response["X-Trace-Id"] = trace_id  
+        # 2. 执行原视图函数  
+        response = self.get_response(request)  
+  
+        # 3. 写回响应头  
+        response["X-Trace-Id"] = get_trace_id()  
         return response
 ```
 
