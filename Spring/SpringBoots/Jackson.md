@@ -1,3 +1,72 @@
+# SpringBoot中注册自定义的全局ObjectMapper
+```java title:JacksonConfig.java
+@Configuration
+public class JacksonConfig {
+
+    @Bean
+    public Jackson2ObjectMapperBuilderCustomizer customizer() {
+        return builder -> builder
+                // 1. 时区
+                .timeZone(TimeZone.getTimeZone(ZoneId.systemDefault()))
+
+                // 2. 反序列化特性
+                .featuresToDisable(
+		                // 禁用反序列化时对未知属性的失败处理，当JSON中包含Java对象中不存在的字段时，不会抛出异常，而是忽略这些未知字段
+                        DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES
+                )
+                .featuresToEnable(
+			            // 反序列化空数组时将其视为 null
+                        DeserializationFeature.ACCEPT_EMPTY_ARRAY_AS_NULL_OBJECT
+                )
+                
+                // 3. 关闭或开启 MapperFeature
+                //    注：IGNORE_DUPLICATE_MODULE_REGISTRATIONS 默认就是 true，
+                //    如确实需要关闭，可这样写：
+                .featuresToDisable(MapperFeature.IGNORE_DUPLICATE_MODULE_REGISTRATIONS)
+
+                // 4. 注册你的模块
+                .modules(configTimeModule(), configNumberModule())
+
+                // 5. 让 Spring 自动帮你 findAndRegisterModules
+                //    （Jackson2ObjectMapperBuilder 默认就会调用）
+                .findModulesViaServiceLoader(true);
+    }
+
+    /**
+     * 时间对象序列化、反序列化配置
+     *
+     * @return {@link JavaTimeModule }
+     */
+    private static JavaTimeModule configTimeModule() {
+        JavaTimeModule javaTimeModule = new JavaTimeModule();
+
+        String localDateTimeFormat = "yyyy-MM-dd HH:mm:ss";
+        String localDateFormat = "yyyy-MM-dd";
+        String localTimeFormat = "HH:mm:ss";
+        
+        javaTimeModule.addSerializer(LocalTime.class, new LocalTimeSerializer(DateTimeFormatter.ofPattern(localTimeFormat)));
+        javaTimeModule.addDeserializer(LocalTime.class, new LocalTimeDeserializer(DateTimeFormatter.ofPattern(localTimeFormat)));
+        
+        javaTimeModule.addSerializer(LocalDate.class, new LocalDateSerializer(DateTimeFormatter.ofPattern(localDateFormat)));
+        javaTimeModule.addDeserializer(LocalDate.class, new LocalDateDeserializer());
+        
+        javaTimeModule.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(DateTimeFormatter.ofPattern(localDateTimeFormat)));
+        javaTimeModule.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer());
+
+        return javaTimeModule;
+    }
+    
+    private static SimpleModule configNumberModule() {
+        SimpleModule simpleModule = new SimpleModule();
+        simpleModule.addSerializer(Long.class, ToStringSerializer.instance);
+        simpleModule.addSerializer(Double.class, ToStringSerializer.instance);
+        simpleModule.addSerializer(Double.TYPE, ToStringSerializer.instance);
+        simpleModule.addSerializer(BigDecimal.class, new BigDecimalSerializer());
+        return simpleModule;
+    }
+}
+```
+
 # @JsonSerialize 和 @JsonDeserialize
 
 JsonSerialize：指定自定义的序列化器，控制如何将对象转换为JSON字符串，包括自定义字段值的格式、类型转换等。
@@ -469,6 +538,21 @@ public enum OrderFieldEnum {
 比如需要返给前端枚举值展示下拉框，就直接Vo里就直接`List<Enum>` enumList，而不用定义个`List<String>` enumList，再反复getValue。因为返给前端时，Vo对象序列化，里面的一个个枚举对象也序列化，而JsonValue已经指定了序列化枚举对象时就把它的value返回就行。
 
 
+# @JsonEnumDefaultValue
+如：
+```java
+public enum Level {
+    @JsonProperty("high")
+    HIGH,
+    @JsonProperty("low")
+    LOW,
+    @JsonEnumDefaultValue
+    UNKNOWN
+}
+```
+
+只要 JSON 不是 `"high"` / `"low"`，一律反序列化为 `UNKNOWN`。JSON 为 `null` 时仍返回 `null`；只有**无法匹配字符串**才走兜底。
+
 # @JsonView
 
 利用@JsonView注解返回不同的字段
@@ -588,3 +672,111 @@ public class RSerializer extends JsonSerializer<R> {
 }
 ```
 这里序列化的内容需要根据自己的R类自行修改
+
+# @JacksonAnnotationsInside
+作用是自定义一个注解，并且告诉Jackson里面有Jackson的注解，需要解析元注解。例如：
+```java hl:3,11
+@Target({ElementType.FIELD, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+@JacksonAnnotationsInside      // 让 Jackson 扫描元注解
+@JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+@JsonInclude(JsonInclude.Include.NON_NULL)   // 想再叠一层也行
+public @interface MyDateTime {}
+
+
+// 使用时直接
+public class OrderDTO {
+    @MyDateTime
+    private LocalDateTime createTime;
+}
+
+```
+
+如果自定义的注解需要传入一些参数，控制序列化内容，则需要更复杂的配置
+
+例如：
+```java hl:3-5,80
+@Target({ElementType.FIELD, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+@JacksonAnnotationsInside               // 让 Jackson 扫描元注解
+@JsonSerialize(using = MaskingSerializer.class)
+@JsonDeserialize(using = MaskingDeserializer.class)
+public @interface Masking {
+    int prefix() default 0;             // 保留前几位
+    int suffix() default 0;             // 保留后几位
+    char maskChar() default '*';        // 掩码字符
+}
+
+// 序列化器
+public class MaskingSerializer extends JsonSerializer<String>
+                               implements ContextualSerializer {
+
+    private int prefix;
+    private int suffix;
+    private char maskChar;
+
+    // 无参构造（Jackson 会先 new 一个空壳，再调用 createContextual 注入参数）
+    public MaskingSerializer() {}
+
+    // 带参构造（createContextual 里用）
+    private MaskingSerializer(int prefix, int suffix, char maskChar) {
+        this.prefix = prefix;
+        this.suffix = suffix;
+        this.maskChar = maskChar;
+    }
+
+    @Override
+    public void serialize(String value, JsonGenerator gen,
+                          SerializerProvider serializers) throws IOException {
+        if (value == null) {
+            gen.writeNull();
+            return;
+        }
+        int len = value.length();
+        int start = Math.min(prefix, len);
+        int end   = Math.max(0, len - suffix);
+        String masked = value.substring(0, start)
+                     + String.valueOf(maskChar).repeat(Math.max(0, end - start))
+                     + value.substring(end);
+        gen.writeString(masked);
+    }
+
+    /* 从注解里拿到参数并创建新实例 */
+    @Override
+    public JsonSerializer<?> createContextual(SerializerProvider prov,
+                                              BeanProperty property) {
+        Masking ann = property.getAnnotation(Masking.class);
+        if (ann == null) return this;
+        return new MaskingSerializer(ann.prefix(), ann.suffix(), ann.maskChar());
+    }
+}
+
+
+// 反序列化器
+public class MaskingDeserializer extends JsonDeserializer<String>
+                                 implements ContextualDeserializer {
+
+    // 这里示例：反序列化时直接原样返回，业务可按需处理
+    @Override
+    public String deserialize(JsonParser p, DeserializationContext ctxt)
+            throws IOException {
+        return p.getValueAsString();
+    }
+
+    // 如果你反序列化时也需要注解里的参数，就在这里拿
+    @Override
+    public JsonDeserializer<?> createContextual(DeserializationContext ctxt,
+                                                BeanProperty property) {
+        return this;
+    }
+}
+
+
+// 使用
+@Data
+public class UserDTO {
+    @Masking(prefix = 3, suffix = 4, maskChar = '#')
+    private String phone;
+}
+
+```
