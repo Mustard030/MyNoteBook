@@ -1,5 +1,153 @@
-# CSRF、CORS、Session
+# Django
+## 模型（Models）
 
+## 视图（Views）
+
+### FBV
+是Django中最简单的视图实现方式，通过 Python 函数处理 HTTP 请求并返回响应。
+需手动判断请求方法（如 GET/POST），通过 `request.method` 分支处理不同逻辑
+
+```python
+def contact_view(request):
+    if request.method == 'GET':
+        return render(request, 'contact.html')
+    elif request.method == 'POST':
+        name = request.POST.get('name')
+        return HttpResponse(f"Thanks, {name}!")
+        
+def download_file(request):
+    file = open('report.pdf', 'rb')
+    return FileResponse(file, as_attachment=True)
+```
+
+适合如返回静态页面、API 接口等一次性功能。
+配置映射：
+
+```python
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('hello/', views.hello_world),
+    path('contact/', views.contact_view),
+]
+```
+
+### CBV
+
+View -> TemplateView, RedirectView -> ListView, DetailView -> CreateView, UpdateView, DeleteView
+
+#### View
+
+**抽象程度最低​**​，需要完全手动处理请求。允许的方法名为`http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace']`
+**核心机制​**​：
+
+- 通过 `dispatch()` 方法自动路由请求到对应的 HTTP 方法处理器
+- 必须覆盖实现 `get()`/`post()` 等方法
+
+**适用场景​**​：需要绝对控制权的特殊需求
+
+```python
+from django.views import View
+
+class ManualView(View):
+    def get(self, request, *args, **kwargs):
+        return HttpResponse("GET handled manually")
+
+    def post(self, request, *args, **kwargs):
+        return HttpResponse("POST handled manually")
+```
+
+#### TemplateView
+
+预配置模板渲染
+签名：`class TemplateView(TemplateResponseMixin, ContextMixin, View)`
+
+```python
+class AboutView(TemplateView):
+    template_name = "about.html"
+    extra_context = {"company": "Tech Inc"}
+```
+
+可配置项：
+
+```python
+class TemplateResponseMixin:
+    """A mixin that can be used to render a template."""
+    template_name = None  # 模板名称
+    template_engine = None
+    response_class = TemplateResponse
+    content_type = None
+    
+class ContextMixin:
+    """
+    A default context mixin that passes the keyword arguments received by
+    get_context_data() as the template context.
+    """
+    extra_context = None  # 模板需要传递的参数
+```
+
+#### RedirectView
+
+预设重定向行为
+可配置项：
+
+```python
+class RedirectView(View):
+    """Provide a redirect on any GET request."""
+    permanent = False  # False=临时重定向 (302)  True=​​永久重定向 (301)
+    url = None  # 直接指定目标 URL 字符串（例如 `url="/new-path/"`）
+    pattern_name = None  # 通过 Django URL 名称反向生成 URL（例如 `pattern_name="new_view_name"`）
+    query_string = False  # 设置 `query_string=True` 时，原 URL 的查询参数（如 `?key=value`）会附加到目标 URL
+
+	def get_redirect_url(self, *args, **kwargs):
+	"""
+	Return the URL redirect to. Keyword arguments from the URL pattern
+	match generating the redirect request are provided as kwargs to this
+	method.
+	"""
+	...
+```
+
+临时重定向（302） vs 永久重定向（301）：核心区别
+
+| ​**​特性​**​        | ​**​临时重定向 (302)​**​                    | ​**​永久重定向 (301)​**​                                  |
+| ----------------- | -------------------------------------- | ---------------------------------------------------- |
+| ​**​HTTP 状态码​**​  | 302 Found                              | 301 Moved Permanently                                |
+| ​**​设计目的​**​      | 临时资源位置变更                               | 永久性资源位置变更                                            |
+| ​**​浏览器行为​**​     | 每次访问都向原始 URL 发送请求                      | 自动缓存重定向，后续直接跳新 URL                                   |
+| ​**​SEO 影响​**​    | 保持原 URL 权重，不传递权重                       | 原 URL 权重完全转移到新 URL                                   |
+| ​**​典型场景​**​      | • 临时维护页面  <br>• A/B 测试  <br>• 登录后返回原页面 | • 网站改版/域名更换  <br>• URL 结构永久变更  <br>• HTTP → HTTPS 迁移 |
+| ​**​性能影响​**​      | 每次访问都需服务端响应                            | 后续访问浏览器直接跳转（减少请求）                                    |
+| ​**​缓存行为​**​      | 默认不缓存                                  | 被浏览器和代理服务器长期缓存                                       |
+| ​**​用户影响​**​      | 每次访问都经历重定向                             | 后续访问无感直达新页面                                          |
+| ​**​Django 实现​**​ | `RedirectView(permanent=False)`        | `RedirectView(permanent=True)`                       |
+
+1. **缓存机制区别​**​
+   - 301：浏览器和 CDN 会永久缓存重定向关系\
+     （除非强制清除缓存）
+   - 302：不缓存，每次请求都需要服务器确认
+2. ​**​SEO 后果（关键差异）​**​
+   - ​**​301​**​：搜索引擎会将旧 URL 的排名信号、外链权重完全转移到新 URL，旧 URL 会逐渐从索引中移除
+   - ​**​302​**​：搜索引擎继续索引旧 URL，不会传递任何权重到新地址（可能被判定为试图操纵排名）
+
+#### Django 的 CRUD 集成视图
+
+| 视图类          | 核心功能   | 主要配置项                        |
+| ------------ | ------ | ---------------------------- |
+| `ListView`   | 对象列表展示 | `model`, `queryset`          |
+| `DetailView` | 单个对象详情 | `slug_field`, `pk_url_kwarg` |
+| `CreateView` | 新建对象   | `form_class`, `fields`       |
+| `UpdateView` | 更新对象   | `template_name_suffix`       |
+| `DeleteView` | 删除对象   | `success_url`                |
+
+
+
+## 中间件
+
+## 路由
+
+## 安全
 django settings里面安全相关的配置分为四大类`ALLOWED_HOSTS`、`CSRF_*`、`CORS_*`、`SESSION_*`
 CSRF保护的是表单提交等操作，而CORS保护的是前端资源请求，CSRF 关注的是请求的 ​**​来源（Origin）是否可信​**​（用于表单提交等改变状态的操作），CORS 关注的是浏览器是否允许前端代码 ​**​读取响应​**​。
 
@@ -37,9 +185,10 @@ CORS_ORIGIN_WHITELIST = ['https://www.example.com']  # 仅允许主站跨域
 - `ALLOWED_HOSTS` 是基础安全屏障，必须配置正确
 - 使用HTTPS时，`CSRF_TRUSTED_ORIGINS` 应明确包含前端地址
 
-## 基础安全设置
 
-### ALLOWED_HOSTS
+### 基础安全设置
+
+#### ALLOWED_HOSTS
 
 **作用​**​: ​**​安全基础​**​，防止 HTTP Host 头攻击。Django 只响应请求头中 `Host` 或 `X-Forwarded-Host` 与此列表匹配的请求。Django 在验证 HTTP Host 头时，会**忽略**端口部分，只比较域名或 IP 地址。允许一个域名意味着​**​允许该域名的所有端口请求​**
 
@@ -49,7 +198,7 @@ ALLOWED_HOSTS = [
     '.example.com',       # 匹配 *.example.com 的所有子域
     'localhost',
     '127.0.0.1',
-    '[::1]',               # IPv6
+    '[::1]',              # IPv6
 ]
 ```
 
@@ -59,9 +208,102 @@ ALLOWED_HOSTS = [
 - ​**​生产环境​**​: ​**​必须​**​配置为你的正式域名/IP。
 - **代理/负载均衡器​**​：当使用 Nginx/Apache 时，确保它们正确传递 `Host` 头（不含端口）
 
-## CSRF 相关设置 (防止跨站请求伪造)​
+### CSRF
+CSRF校验主要通过**Django**自带的中间件`"django.middleware.csrf.CsrfViewMiddleware"`进行。  
 
-### CSRF_TRUSTED_ORIGINS
+在 **Django** 里，`csrftoken`（CSRF Token）是一个**会话级别的随机值**，它通常在用户第一次访问站点时由中间件生成并下发到浏览器的 `csrftoken` **Cookie** 中（不是 sessionStorage），默认有效期是 **1 年**。  
+
+**表单 / AJAX 请求** 时，需要把这个 token 一起带回（通常放在请求头 `X-CSRFToken` 或表单隐藏字段）。只要这个 Cookie 不过期或不被清除，Django 就会一直复用这个 Token。  
+
+默认情况下，**Django 只会在视图中用到 `{% csrf_token %}` 标签时，才下发 CSRF Cookie**。  
+
+每个 POST（或 PUT/DELETE 等 “修改数据” 的请求）必须带上正确的 `csrftoken`。Django 会从 **Cookie** 和 **请求头/表单隐藏字段** 中分别取出 token 值做比对，一致才放行。
+
+当
+- 用户清除浏览器 Cookie。
+- 服务器端调用 `rotate_token(request)` 主动刷新。
+- 用户过了一年，Cookie 过期。
+的时候就会变更
+
+这就会带来一个问题：
+如果这是 **前后端分离**的应用，前端第一次访问 API 时，Django 并不会自动给它下发 `csrftoken` cookie，因为模板里根本没有 `{% csrf_token %}`。这样前端发起的 **第二次 POST 请求** 就会因为缺少 CSRF token 而被拒绝。
+
+**CSRF 保护机制**相关的几个装饰器：
+`@csrf_exempt`
+**作用**：让某个视图函数 **不进行 CSRF 验证**。
+```python
+from django.views.decorators.csrf import csrf_exempt
+
+@csrf_exempt
+def my_view(request):
+    return HttpResponse("CSRF not checked")
+```
+但更推荐使用 `@csrf_exempt` + JWT/TokenAuth，而不是完全关闭保护
+
+`@csrf_protect`
+**作用**：强制某个视图函数进行 CSRF 验证。
+```python
+from django.views.decorators.csrf import csrf_protect
+
+@csrf_protect
+def my_view(request):
+    return HttpResponse("CSRF checked")
+```
+
+通常用于全局配置中关闭了 CSRF（例如 API 项目默认禁用），但某个视图仍然希望强制保护，特别是表单提交的视图。
+
+`@requires_csrf_token`
+**作用**：用于**错误处理视图**或**模板渲染时**，保证模板上下文里一定有 CSRF token。  
+**区别**：不会强制检查请求的 CSRF token，只是确保在 `context` 中有 `csrf_token` 变量。  
+**典型用法**：
+```python
+from django.views.decorators.csrf import requires_csrf_token
+from django.shortcuts import render
+
+@requires_csrf_token
+def custom_403_view(request, exception=None):
+    # 即使这里没有经过CSRF验证，模板里也能安全使用 {{ csrf_token }}
+    return render(request, "403.html")
+```
+**应用场景**：
+- 自定义 `403 Forbidden` 页面。
+- 需要在模板中放置 `csrf_token`（例如表单）但又不是正常视图时。
+
+`@ensure_csrf_cookie`
+**作用**：保证 **响应里会设置 CSRF cookie**（即使模板没有调用 `{{ csrf_token }}` 标签）。只确保下发，不负责校验。
+**典型用法**：
+```python
+from django.views.decorators.csrf import ensure_csrf_cookie
+
+@ensure_csrf_cookie
+def my_view(request):
+    return render(request, "index.html")
+```
+
+**CSRF 保护机制**相关的几个函数：
+`get_token(request)`
+**作用：** 获取当前请求的 CSRF token。如果请求里已经有 CSRF token（比如 cookie 里的 `csrftoken`），就直接返回。如果没有，就会生成一个新的 token 并附加到 `request.META['CSRF_COOKIE']` 上。
+
+`rotate_token(request)`
+**作用：** 强制生成一个新的 CSRF token，并替换掉旧的。通常用于 **用户登录、权限变更** 等**安全边界发生变化**的关键操作后，防止 token 固定攻击（session fixation）。Django 在 `login()` 的时候会调用它。
+例如用户登录后刷新 CSRF Token、提升权限时刷新 CSRF Token、重要操作后主动调用（比如绑定银行卡、修改邮箱）
+
+**相关配置：**
+
+| 配置项                  | 默认值                              | 说明                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CSRF_COOKIE_AGE      | `31449600` （约 1 年，以秒为单位）         | 将此设置改为 `None`，以使用基于会话的 CSRF cookie，它将 cookie 保存在内存中，而不是持久性存储中。                                                                                                                                                                                                                                                                                                                                                                                |
+| CSRF_COOKIE_DOMAIN   | None                             | 设置 CSRF cookie 时要使用的域。它应该设置为一个字符串，如 `".example.com"`，以允许一个子域上的表单的 POST 请求被另一个子域的视图所接受。                                                                                                                                                                                                                                                                                                                                                        |
+| CSRF_COOKIE_HTTPONLY | False                            | 是否对 CSRF cookie 使用 `HttpOnly` 标志。如果设置为 `True`，客户端的 JavaScript 将无法访问 CSRF cookie。将 CSRF cookie 指定为 `HttpOnly` 并不能提供任何实际的保护，因为 CSRF 只是为了防止跨域攻击。如果攻击者可以通过 JavaScript 读取 cookie，就浏览器所知，他们已经在同一个域上了，所以他们可以做任何他们喜欢的事情。（XSS 是一个比 CSRF 更大的漏洞）。                                                                                                                                                                                                        |
+| CSRF_COOKIE_NAME     | 'csrftoken'                      | 用于 CSRF 认证令牌的 cookie 的名称。这可以是任何你想要的名字（只要它与你的应用程序中的其他 cookie 名字不同）。                                                                                                                                                                                                                                                                                                                                                                            |
+| CSRF_COOKIE_PATH     | ’/‘                              | 在 CSRF cookie 上设置的路径。这个路径应该与你的 Django 安装的 URL 路径相匹配，或者是该路径的父路径。                                                                                                                                                                                                                                                                                                                                                                               |
+| CSRF_COOKIE_SAMESITE | 'Lax'                            | CSRF cookie 上 [SameSite](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite) 标志的值。该标志可防止在跨站点请求中发送 cookie。                                                                                                                                                                                                                                                                                                          |
+| CSRF_COOKIE_SECURE   | False                            | 是否为 CSRF cookie 使用安全 cookie。如果设置为 `True`，cookie 将被标记为 `安全`，这意味着浏览器可以确保 cookie 只在 HTTPS 连接下发送。                                                                                                                                                                                                                                                                                                                                                 |
+| CSRF_USE_SESSIONS    | False                            | 是否将 CSRF 标记存储在用户的会话中，而不是 cookie 中。这需要使用 `django.contrib.session`。                                                                                                                                                                                                                                                                                                                                                                             |
+| CSRF_FAILURE_VIEW    | 'django.views.csrf.csrf_failure' |                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| CSRF_HEADER_NAME     | 'HTTP_X_CSRFTOKEN'               | 用于 CSRF 认证的请求头的名称。与 `request.META` 中的其他 HTTP 头文件一样，从服务器接收到的头文件名通过将所有字符转换为大写字母，用下划线代替任何连字符，并在名称中添加 `'HTTP_'` 前缀进行规范化。例如，如果你的客户端发送了一个 `'X-XSRF-TOKEN'` 头，配置应该是 `'HTTP_X_XSRF_TOKEN'`。                                                                                                                                                                                                                                                           |
+| CSRF_TRUSTED_ORIGINS | `[]` （空列表）                       | 不安全请求（例如 `POST`）的可信来源主机列表。对于 [`可靠`](https://docs.djangoproject.com/zh-hans/3.2/ref/request-response/#django.http.HttpRequest.is_secure "django.http.HttpRequest.is_secure") 的不安全请求，Django 的 CSRF 保护要求该请求的 `Referer` 头必须与 `Host` 头中的来源匹配。例如，这可以防止来自 `subdomain.example.com` 的 `POST` 请求对 `api.example.com` 成功。如果你需要通过 HTTPS 的跨源不安全请求，继续这个例子，在这个列表中添加 `"subdomain.example.com"`。该设置还支持子域，所以你可以添加 `".example.com"`，例如，允许从 `example.com` 的所有子域访问。 |
+#### CSRF_TRUSTED_ORIGINS
 
 **​作用​**​: 允许 ​**​不安全协议（如 HTTP）或非标准端口​**​ 的来源绕过 HTTPS 检查。定义哪些来源被信任，用于接收合法的 CSRF token。
 
@@ -87,7 +329,7 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 ```
 
-### CSRF_COOKIE_DOMAIN
+#### CSRF_COOKIE_DOMAIN
 
 ​**​作用​**​: 控制 `csrftoken` Cookie 的作用域（Domain）。
 
@@ -101,13 +343,15 @@ CSRF_TRUSTED_ORIGINS = [
 
 ​**​默认​**​: `None`（每个域名独享自己的 Cookie）
 
-## CORS 相关设置
+
+
+### CORS
 
 > 需 `django-cors-headers` 包
 
-### CORS_ALLOWED_ORIGINS
+#### CORS_ALLOWED_ORIGINS
 
-旧版本为：CORS_ORIGIN_WHITELIST，但该名称在新版本仍然可用
+旧版本为：`CORS_ORIGIN_WHITELIST`，但该名称在新版本仍然可用
 
 **CORS_ALLOWED_ORIGINS** 匹配的是请求头中的 `Origin` 头部。当浏览器发起一个跨域请求时，会自动在请求头中添加一个 `Origin` 字段，**其值为请求发起页面的源（协议+域名+端口）**。例如，如果前端应用运行在 `https://www.example.com:8080`，那么请求头中的 `Origin` 就是 `https://www.example.com:8080`。
 
@@ -132,7 +376,7 @@ CORS_ORIGIN_WHITELIST = [
 - 当 `CORS_ALLOW_CREDENTIALS = True` 时，​**​禁止使用通配符​**（如 `https://*.example.com`），且必须明确列出所有允许的来源（包括端口，如果端口不是默认端口的话）。这是因为当需要发送凭证时，浏览器要求 Access-Control-Allow-Origin 响应头必须是具体的值，不能是通配符。
 - 通配符 `*.` 仅匹配一级子域（`https://app.domain.com`），不匹配多级子域（`https://dev.app.domain.com`）
 
-### CORS_ORIGIN_ALLOW_ALL
+#### CORS_ORIGIN_ALLOW_ALL
 
 **作用​**​: ​**​禁用白名单​**​，允许 ​**​所有来源​**​ 的跨域请求（⚠️ ​**​高危！生产环境应避免使用​**​）。
 ​
@@ -142,7 +386,7 @@ CORS_ORIGIN_WHITELIST = [
 CORS_ORIGIN_ALLOW_ALL = True  # 替代 `CORS_ORIGIN_WHITELIST`
 ```
 
-### CORS_ALLOW_CREDENTIALS
+#### CORS_ALLOW_CREDENTIALS
 
 **作用​**​: 控制浏览器是否在跨域请求中发送 ​**​凭证（Cookies、HTTP认证等）​**​。
 ​
@@ -156,7 +400,7 @@ CORS_ALLOW_CREDENTIALS = True  # 默认为 False
 
 **限制​**​: 当启用时，​**​不能​**​同时使用 `CORS_ORIGIN_ALLOW_ALL = True`，且 `CORS_ORIGIN_WHITELIST` 必须明确指定域名（不能包含通配符如 `https://*.example.com`）。
 
-### CORS_ALLOW_HEADERS
+#### CORS_ALLOW_HEADERS
 
 **​作用​**​: 控制跨域请求中允许的 ​**​额外 HTTP 请求头​**​（超出浏览器默认安全集）。
 
@@ -181,15 +425,15 @@ CORS_ALLOW_HEADERS = (
 
 ```
 
-### CORS_ALLOW_METHODS
+#### CORS_ALLOW_METHODS
 
 **作用​**​: 控制跨域请求中允许使用的 ​**​HTTP 方法​**​。
 
 **默认包含**: `['DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT']`
 
-## Session相关设置
+### Session
 
-### SESSION_COOKIE_DOMAIN
+#### SESSION_COOKIE_DOMAIN
 
 **作用​**​: 控制 `sessionid` Cookie 的作用域（Domain），实现跨子域共享登录状态
 
@@ -201,9 +445,34 @@ SESSION_COOKIE_DOMAIN = '.example.com'  # 顶级域名，所有子域可访问�
 
 **默认​**​: `None`（每个域名独享 Session Cookie）
 
-# 数据库操作
 
-## 读写分离
+## 模板（Templates）
+
+
+## 配置
+
+
+## 认证与权限
+
+
+## 后台管理（Admin）
+
+
+## 信号（Signals）
+
+
+## 缓存、异步与任务
+
+## 测试与调试
+
+
+
+## 高级技巧与优化
+
+
+## 数据库操作
+
+### 读写分离
 
 在 Django 中，**同一张表的读写分离（写操作走主库，读操作走从库）可以通过自定义数据库路由实现**
 
@@ -311,9 +580,9 @@ python manage.py migrate --database=default
 python manage.py makemigrations --dry-run <app_name>
 ```
 
-## migrate工具
+### migrate工具
 
-### makemigrations
+#### makemigrations
 
 `makemigrations`时，**Django 不会对数据库做任何改动**，也不会读写 `django_migrations` 表。`makemigrations` 每次生成迁移文件时，**只关心当前模型状态 vs 数据库最后一次已应用的迁移**（记录在 `django_migrations` 表中的那个）。迁移文件的编号是Django扫描`app/migrations/` 目录下已有的迁移文件，取最大的数字加 1生成的。
 
@@ -357,7 +626,7 @@ python manage.py makemigrations --dry-run -v 3 <app_name>  # 只展示迁移，�
 python manage.py makemigrations <app_name>
 ```
 
-### migrate
+#### migrate
 
 当取消应用迁移时，所有依赖的迁移也将被取消应用，无论 `<app_label>`。你可以使用 `--plan` 来检查哪些迁移将被取消应用。
 
@@ -405,7 +674,7 @@ python manage.py migrate --database <db_name>  # 指定要迁移的数据库（�
 python manage.py migrate --fake <app_name>  # 假迁移 标记迁移为完成状态但不实际执行SQL 当迁移已手动应用或不需要操作时使用
 ```
 
-### showmigrations
+#### showmigrations
 
 查看migration有哪些已经执行了，哪些还没执行，已执行的会显示`[X]  <app_name>.<编号>_xxx`，未执行的是`[ ]`
 
@@ -440,7 +709,7 @@ optional arguments:
 python manage.py showmigrations <app_name>
 ```
 
-### sqlmigrate
+#### sqlmigrate
 
 ```shell
 usage: manage.py sqlmigrate [-h] [--database DATABASE] [--backwards] [--version] [-v {0,1,2,3}] [--settings SETTINGS] [--pythonpath PYTHONPATH] [--traceback] [--no-color] [--force-color] [--skip-checks] app_label migration_name
@@ -473,6 +742,8 @@ optional arguments:
 python manage.py sqlmigrate <app_label> <migration_name>  # 展示前向的sql变更具体语句
 python manage.py sqlmigrate --backwards <app_label> <migration_name>  # 展示反向的sql变更具体语句（比如取消这个变更）
 ```
+
+---
 
 # DRF
 
@@ -761,42 +1032,6 @@ LOGGING = {
 视图大体上分为两类：`CBV`(基于类的视图)和`FBV`(基于方法的视图)
 
 ### FBV
-
-#### Django原生
-
-是Django中最简单的视图实现方式，通过 Python 函数处理 HTTP 请求并返回响应。
-需手动判断请求方法（如 GET/POST），通过 `request.method` 分支处理不同逻辑
-
-```python
-def contact_view(request):
-    if request.method == 'GET':
-        return render(request, 'contact.html')
-    elif request.method == 'POST':
-        name = request.POST.get('name')
-        return HttpResponse(f"Thanks, {name}!")
-        
-def download_file(request):
-    file = open('report.pdf', 'rb')
-    return FileResponse(file, as_attachment=True)
-```
-
-适合如返回静态页面、API 接口等一次性功能。
-配置映射：
-
-```python
-from django.urls import path
-from . import views
-
-urlpatterns = [
-    path('hello/', views.hello_world),
-    path('contact/', views.contact_view),
-]
-```
-
----
-
-#### DRF
-
 DRF中也有FBV的增强方法。DRF提供了一组简单的装饰器，这些装饰器包装了基于函数的视图，以确保它们接收 `Request` 的实例（而不是通常的 Django `HttpRequest`），并允许它们返回 `Response`（而不是 Django `HttpResponse`），并允许你配置请求的处理方式。
 
 ##### @api_view()
@@ -883,123 +1118,7 @@ def view(request):
 
 ### CBV
 
-CBV分为两部分，分别是**Django原生**的类和**DRF**的类
-
-**Django原生**：
-View -> TemplateView, RedirectView -> ListView, DetailView -> CreateView, UpdateView, DeleteView
-
-**DRF**：
 APIView -> GenericAPIView（配合Mixins） -> 组合的通用视图（如ListAPIView） -> 视图集（ViewSet, ModelViewSet） -> 自定义动作（@action）
-
-#### Django原生CBV
-
-##### View
-
-**抽象程度最低​**​，需要完全手动处理请求。允许的方法名为`http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace']`
-**核心机制​**​：
-
-- 通过 `dispatch()` 方法自动路由请求到对应的 HTTP 方法处理器
-- 必须覆盖实现 `get()`/`post()` 等方法
-
-**适用场景​**​：需要绝对控制权的特殊需求
-
-```python
-from django.views import View
-
-class ManualView(View):
-    def get(self, request, *args, **kwargs):
-        return HttpResponse("GET handled manually")
-
-    def post(self, request, *args, **kwargs):
-        return HttpResponse("POST handled manually")
-```
-
-##### TemplateView
-
-预配置模板渲染
-签名：`class TemplateView(TemplateResponseMixin, ContextMixin, View)`
-
-```python
-class AboutView(TemplateView):
-    template_name = "about.html"
-    extra_context = {"company": "Tech Inc"}
-```
-
-可配置项：
-
-```python
-class TemplateResponseMixin:
-    """A mixin that can be used to render a template."""
-    template_name = None  # 模板名称
-    template_engine = None
-    response_class = TemplateResponse
-    content_type = None
-    
-class ContextMixin:
-    """
-    A default context mixin that passes the keyword arguments received by
-    get_context_data() as the template context.
-    """
-    extra_context = None  # 模板需要传递的参数
-```
-
-##### RedirectView
-
-预设重定向行为
-可配置项：
-
-```python
-class RedirectView(View):
-    """Provide a redirect on any GET request."""
-    permanent = False  # False=临时重定向 (302)  True=​​永久重定向 (301)
-    url = None  # 直接指定目标 URL 字符串（例如 `url="/new-path/"`）
-    pattern_name = None  # 通过 Django URL 名称反向生成 URL（例如 `pattern_name="new_view_name"`）
-    query_string = False  # 设置 `query_string=True` 时，原 URL 的查询参数（如 `?key=value`）会附加到目标 URL
-
-	def get_redirect_url(self, *args, **kwargs):
-	"""
-	Return the URL redirect to. Keyword arguments from the URL pattern
-	match generating the redirect request are provided as kwargs to this
-	method.
-	"""
-	...
-```
-
-临时重定向（302） vs 永久重定向（301）：核心区别
-
-| ​**​特性​**​        | ​**​临时重定向 (302)​**​                    | ​**​永久重定向 (301)​**​                                  |
-| ----------------- | -------------------------------------- | ---------------------------------------------------- |
-| ​**​HTTP 状态码​**​  | 302 Found                              | 301 Moved Permanently                                |
-| ​**​设计目的​**​      | 临时资源位置变更                               | 永久性资源位置变更                                            |
-| ​**​浏览器行为​**​     | 每次访问都向原始 URL 发送请求                      | 自动缓存重定向，后续直接跳新 URL                                   |
-| ​**​SEO 影响​**​    | 保持原 URL 权重，不传递权重                       | 原 URL 权重完全转移到新 URL                                   |
-| ​**​典型场景​**​      | • 临时维护页面  <br>• A/B 测试  <br>• 登录后返回原页面 | • 网站改版/域名更换  <br>• URL 结构永久变更  <br>• HTTP → HTTPS 迁移 |
-| ​**​性能影响​**​      | 每次访问都需服务端响应                            | 后续访问浏览器直接跳转（减少请求）                                    |
-| ​**​缓存行为​**​      | 默认不缓存                                  | 被浏览器和代理服务器长期缓存                                       |
-| ​**​用户影响​**​      | 每次访问都经历重定向                             | 后续访问无感直达新页面                                          |
-| ​**​Django 实现​**​ | `RedirectView(permanent=False)`        | `RedirectView(permanent=True)`                       |
-
-1. **缓存机制区别​**​
-   - 301：浏览器和 CDN 会永久缓存重定向关系\
-     （除非强制清除缓存）
-   - 302：不缓存，每次请求都需要服务器确认
-2. ​**​SEO 后果（关键差异）​**​
-   - ​**​301​**​：搜索引擎会将旧 URL 的排名信号、外链权重完全转移到新 URL，旧 URL 会逐渐从索引中移除
-   - ​**​302​**​：搜索引擎继续索引旧 URL，不会传递任何权重到新地址（可能被判定为试图操纵排名）
-
-##### Django 的 CRUD 集成视图
-
-| 视图类          | 核心功能   | 主要配置项                        |
-| ------------ | ------ | ---------------------------- |
-| `ListView`   | 对象列表展示 | `model`, `queryset`          |
-| `DetailView` | 单个对象详情 | `slug_field`, `pk_url_kwarg` |
-| `CreateView` | 新建对象   | `form_class`, `fields`       |
-| `UpdateView` | 更新对象   | `template_name_suffix`       |
-| `DeleteView` | 删除对象   | `success_url`                |
-
----
-
-#### DRF CBV
 
 ##### APIView
 
@@ -1255,8 +1374,7 @@ urlpatterns += router.urls
 
 ---
 
-##### DRF 扩展操作：`@action` 装饰器
-
+##### `@action` 装饰器
 > 在旧版本（DRF≤3.7）中是`@list_route`和`@detail_route`，其实就是detail=False和True的情况，在之后的版本中使用`@action`装饰器和参数`detail`代替。
 
 `url_path`：定义此操作对应的URL路径片段。默认为被修饰的方法的名称。
@@ -2162,6 +2280,52 @@ class CommentSerializer(serializers.ModelSerializer):
 ##### **`ImageField`**
 **签名：**`ImageField(max_length=None, allow_empty_file=False, use_url=UPLOADED_FILES_USE_URL)`
 同上。使用`ImageField`需要`Pillow`配合工作。用于验证上传的文件是否为有效的图像格式，并提供图像处理功能。
+
+#### 关联关系字段
+##### `RelatedField`
+所有关联关系字段的基类
+```python
+class RelatedField(Field):
+    def __init__(self, read_only=False, write_only=False,
+                 required=None, allow_null=False, default=empty,
+                 source=None, validators=None, error_messages=None,
+                 label=None, help_text=None, style=None,
+                 # 关系字段专用
+                 queryset=None, many=None,
+                 allow_empty=True, html_cutoff=None, html_cutoff_text=None):
+        super().__init__(...)   # 基类 Field 的其它通用参数
+```
+
+`queryset`
+当字段需要 **写入**（POST/PUT/PATCH）时，DRF 会用这个 `queryset` 做两件事：1. 校验提交的 pk 或 URL 是否在范围内；2. 通过 `queryset.get()` 拿到真正的对象实例。
+如果不给 `queryset`，DRF 会把字段自动设为 `read_only=True`，从而变成只读。
+
+`many`
+当模型字段本身是 `ForeignKey`（单对象）时，`many` 默认为 `False`。当模型字段是 `ManyToManyField` 或反向 `ForeignKey` 时，需要 `many=True`，否则序列化器会抛异常。
+- `many=False` → 单个值（`{"artist": 3}`）
+- `many=True` → 列表（`{"tracks": [1, 2, 3]}`）
+
+##### `StringRelatedField`
+**签名：**`StringRelatedField()`
+这个字段类型定死`read_only=True`（只读），其余参数跟随`RelatedField`，序列化时直接使用`str(value)`来获取显示内容，因此可以自定义模型字段的`__str__()`来决定显示什么内容。
+
+##### `PrimaryKeyRelatedField`
+**签名：** `PrimaryKeyRelatedField(pk_field=None)`
+读/写。用主键（id）表示关联对象。可以自定义主键字段是哪个。
+
+##### `SlugRelatedField`
+**签名：** `SlugRelatedField(slug_field)`
+读/写。必须传入`slug_field`，用 model 上某个 `slug` 字段的值表示关联对象。
+
+##### `HyperlinkedRelatedField`
+**签名：** `HyperlinkedRelatedField(view_name, lookup_field='pk', lookup_url_kwarg='pk')`
+渲染成指向关联对象的超链接（URL）。当你的序列化类继承自`HyperlinkedModelSerializer`的时候自动使用这个字段，可以在`Meta.fields`中添加`url`字段以显示。`lookup_url_kwarg`不设置时默认与`lookup_field`相同。
+序列化时使用`url = self.reverse(view_name, kwargs=kwargs, request=request)`（就是django的`reverse`函数，如果给了request上下文，则会再使用`request.build_absolute_uri(url)`构建完整的uri）
+
+##### `HyperlinkedIdentityField`
+**签名：** `HyperlinkedRelatedField(view_name, lookup_field='pk', lookup_url_kwarg='pk')`
+`HyperlinkedIdentityField`稍微有点特殊，它继承自`HyperlinkedRelatedField`，在语义上表达**指向模型自身**的超链接，而`HyperlinkedRelatedField`可以表达其他模型字段的超链接。并且`HyperlinkedIdentityField`是**只读**的，而`HyperlinkedRelatedField`不是。
+
 
 #### 复合字段
 ##### **`ListField`**
