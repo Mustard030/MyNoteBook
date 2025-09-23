@@ -25,17 +25,33 @@
 4. ==授权码模式==✨（authorization_code）
   这是最安全的模式，也是最推荐的形式。相比隐式授权模式，它并不会直接返回Token，而是返回授权码，真正的Token是通过**应用服务器**访问**验证服务器**获得的。在一开始的时候，**应用服务器**（客户端通过访问自己的应用服务器来进而访问其他服务）和**验证服务器**之间会共享一个`secret`，这个东西没有其他人知道，而**验证服务器**在用户验证完成之后，会返回一个授权码，**应用服务器**最后将授权码和`secret`一起交给验证服务器进行验证，并且Token也是在服务端之间传递，不会直接给到客户端。也就是说新增了一个可信任的应用服务器的角色
 
+
 ```mermaid
 sequenceDiagram
-	用户->>客户端:1.用户在客户端程序上操作某些功能希望从资源服务器获取数据
-	客户端->>授权服务器: 2.客户端程序重定向浏览器请求到授权服务器要求授权
-	授权服务器->>用户: 3.授权服务器请求用户同意
-	用户->>授权服务器: 4.用户同意授权
-	授权服务器->>客户端: 5.重定向至第二步的回调地址
-	客户端->>授权服务器: 6.客户端获取access token
-	客户端->>资源服务器: 7.客户端用access token访问资源服务器
-	资源服务器->>客户端: 8.资源服务器返回资源
+    participant 用户
+    participant 浏览器/客户端
+    participant 授权服务器
+    participant 资源服务器
+
+    用户->>浏览器/客户端: 1. 点击「第三方登录」
+    浏览器/客户端->>授权服务器: 2. 重定向到授权端点<br/>?response_type=code&client_id=xxx&redirect_uri=xxx&scope=read&state=xyz
+    授权服务器->>用户: 3. 返回登录/授权页
+    用户->>授权服务器: 4. 输入账号密码并同意授权
+    授权服务器->>浏览器/客户端: 5. 302 重定向回 redirect_uri<br/>?code=AUTH_CODE&state=xyz
+    浏览器/客户端->>授权服务器: 6. POST 令牌端点<br/>grant_type=authorization_code&code=AUTH_CODE&redirect_uri=xxx&client_id=xxx&client_secret=xxx
+    授权服务器->>浏览器/客户端: 7. 返回访问令牌<br/>{"access_token":"xxx","token_type":"Bearer","expires_in":3600,"refresh_token":"xxx"}
+    浏览器/客户端->>资源服务器: 8. 访问受保护资源<br/>Authorization: Bearer ACCESS_TOKEN
+    资源服务器->>浏览器/客户端: 9. 返回用户数据 / 业务响应
 ```
+
+
+1. 浏览器访问服务1时，先看服务1自己的session里面有没有已登录的信息，如果没有，就访问授权服务器的预登录页面查看有没有在授权服务器的已登录信息，如果还是没有再重定向到授权服务器的登录页。
+2. 用户登录后将登录信息保存到授权服务器中，再将令牌返回给服务1，服务1拿到令牌之后先通过授权服务器拿到token信息，确认token有效之后将登录信息保存到服务1的session中。再将token返回给用户，用户此后将直接使用token访问服务1。
+3. 然后浏览器访问服务2时，也是先看服务2的session中有没有已登录信息，如果没有，就访问授权服务器的预登录页，假设服务1已经在授权服务器登录，此时预登录页面可以获取到授权服务器的已登录信息，则可以直接颁发令牌给服务2。
+4. 同样的，服务2拿到令牌之后先通过授权服务器拿到token信息，确认token有效之后将登录信息保存到服务2的session中。再将token返回给用户，用户此后将直接使用token访问服务2。
+
+
+
 
 
 
@@ -71,6 +87,7 @@ sequenceDiagram
     <version>2.2.5.RELEASE</version>  
 </dependency>
 ```
+
 ```yml title:auth-service/application.yml
 server:  
   port: 8500  
