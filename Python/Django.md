@@ -1,5 +1,90 @@
 # Django
 ## 模型（Models）
+每个模型都是一个 Python 的类，这些类继承 `django.db.models.Model`。模型类的每个属性都相当于一个数据库的字段。
+每一个模型需要定义在模块的`models.py`中，加入不在模块中定义，则必须在Meta类中设置`app_label`告诉django这个模型类挂在哪个应用下。
+## 模型字段
+模型中最重要且唯一必要的是数据库的字段定义。字段在类属性中定义。定义字段名时应小心避免使用与模型 API 冲突的名称， 如 `clean`, `save`, or `delete` 等。
+模型中每一个字段都应该是某个 `Field` 类的实例， Django 利用这些字段类来实现以下功能：
+- 字段类型用以指定数据库数据类型（如：`INTEGER`, `VARCHAR`, `TEXT`）。
+- 在渲染表单字段时默认使用的 HTML 视图 (如： `<input type="text">`, `<select>`)。
+- 基本的有效性验证功能，用于 Django 后台和自动生成的表单。
+
+### 通用字段设置
+#### `null`
+如果设置为 `True`，当该字段为空时，Django 会将数据库中该字段设置为 `NULL`。默认为 `False` 。null是数据库层面的。
+
+#### `blank`
+如果设置为 `True`，该字段允许为空。默认为 `False`。  
+注意该选项与 `null` 不同， `null` 选项仅仅是数据库层面的设置，而 `blank` 是涉及表单验证方面。  
+如果一个字段设置为 `blank=True` ，在进行表单验证时，接收的数据该字段值允许为空，而设置为 `blank=False` 时，不允许为空。  
+
+#### `choices`
+
+一系列二元组，用作此字段的选项。如果提供了二元组，默认表单小部件是一个选择框，而不是标准文本字段，并将限制给出的选项。
+
+一个选项列表：
+
+```python
+YEAR_IN_SCHOOL_CHOICES = [
+    ('FR', 'Freshman'),
+    ('SO', 'Sophomore'),
+    ('JR', 'Junior'),
+    ('SR', 'Senior'),
+    ('GR', 'Graduate'),
+]
+```
+
+
+> 每当 `choices` 的顺序变动时将会创建新的迁移。
+
+每个二元组的第一个值会储存在数据库中，而第二个值将只会用于在表单中显示。
+
+对于一个模型实例，要获取该字段二元组中相对应的第二个值，使用 `get_FOO_display()` 方法。例如：
+
+```python
+
+from django.db import models
+
+class Person(models.Model):
+    SHIRT_SIZES = (
+        ('S', 'Small'),
+        ('M', 'Medium'),
+        ('L', 'Large'),
+    )
+    name = models.CharField(max_length=60)
+    shirt_size = models.CharField(max_length=1, choices=SHIRT_SIZES)
+```
+
+```shell
+>>> p = Person(name="Fred Flintstone", shirt_size="L")
+>>> p.save()
+>>> p.shirt_size
+'L'
+>>> p.get_shirt_size_display()
+'Large'
+```
+
+也可以使用枚举类以简洁的方式来定义 `choices` ：
+```python
+from django.db import models
+
+class Runner(models.Model):
+    MedalType = models.TextChoices('MedalType', 'GOLD SILVER BRONZE')
+    name = models.CharField(max_length=60)
+    medal = models.CharField(blank=True, choices=MedalType.choices, max_length=10)
+```
+
+#### [`default`
+
+该字段的默认值。可以是一个值或者是个可调用的对象，如果是个可调用对象，每次实例化模型时都会调用该对象。
+
+### 字段类型
+
+
+
+## Meta类
+Meta类用于模型的配置。几乎所有非字段层面的规则都放置在这里。
+
 
 ## 视图（Views）
 
@@ -3337,7 +3422,7 @@ class UserFilter(django_filters.FilterSet):
 
 `Meta.fields`的列表写法将为`fields`中每个字段创建**所有可用的默认过滤器**（包括 `exact`、`lt`、`gt`、`in` 等），具体取决于字段类型。字典语法将为每个字段创建一个过滤器表达式相符的过滤器。且务必要注意，列表和字段的key是**模型的字段名**，而不是显式定义的**过滤器名称**，如果错误使用了过滤器名称，将会引发`TypeError`。并且无论是列表还是字典写法，都不需要再包含显式声明的过滤器。
 `Meta.fields` 的目的仅是基于模型字段声明可用的过滤器。
-`Meta.fields` 是必须的，哪怕显式定义了过滤器字段也必须把这些名字全都写进去，更推荐全部使用显式声明过滤器。
+`Meta.fields` 是必须的，哪怕显式定义了过滤器字段也必须把这些名字全都写进去，如果不写进去又不想包含其他字段，就赋值为空列表`[]`。更推荐全部使用显式声明过滤器。
 `Meta.fields` 使用`fields = '__all__'`这种写法包含模型的全部字段。
 `Meta.exclude`将排除声明的字段，将模型中其他字段都加入过滤器中。不可以同时指定`exclude`和`fields`。
 
