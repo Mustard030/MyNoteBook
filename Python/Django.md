@@ -965,8 +965,57 @@ def generate_trace_id() -> str:
     return uuid.uuid4().hex
 ```
 
+按需添加`renderer`，方便直接将Response对象转换为`CommonResponse`
+```python
+from rest_framework.renderers import JSONRenderer
+
+from alvanon.utils.common_response import CommonResponse, RespCode, status
+
+
+class CommonResponseJSONRenderer(JSONRenderer):
+    """
+    Custom Renderer: Unifies all outputs in CommonResponse format
+    """
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        # is CommonResponse formatted, return directly
+        if isinstance(data, dict) and {"status", "code", "detail", "data"}.issubset(data.keys()):
+            return super().render(data, accepted_media_type, renderer_context)
+
+        response = renderer_context.get("response") if renderer_context else None
+        http_code = getattr(response, "status_code", status.HTTP_200_OK)
+
+        is_success = 200 <= http_code < 300
+        code = RespCode.OK if is_success else RespCode.BAD
+
+        # exception should be handled by exception handler and return a Response object or CommonResponse object (better)
+
+        # It only handles cases that are not handled in the exception handler as a backing plan
+        if isinstance(data, dict) and "detail" in data:
+            detail_value = data.get("detail")
+
+            if isinstance(detail_value, str):
+                detail = detail_value
+                data = None
+            else:
+                detail = None
+                data = detail_value
+        else:
+            detail = code.detail
+
+        formatted_data = CommonResponse.format_data(
+            status=is_success,
+            code=code,
+            detail=detail,
+            data=data,
+        ).data
+
+        return super().render(formatted_data, accepted_media_type, renderer_context)
+
+```
+
 在统一返回类中添加`trace_id`字段
-```python title:common_response.py hl:14,50,75,88-97,112,124,139,152-161,175,190
+```python title:common_response.py
 from __future__ import annotations  
   
 from dataclasses import dataclass  
@@ -977,31 +1026,33 @@ from django.conf import settings
 from django.http import JsonResponse  
 from django.utils.functional import Promise  
 from django.utils.translation import gettext_lazy as _  
-from rest_framework import serializers, status  
+from rest_framework import serializers, status as rest_status  
 from rest_framework.response import Response  
   
 from utils.trace_utils import get_trace_id  
   
+status = rest_status  
+  
 _StrOrPromise = Union[str, Promise]  
   
-  
-# ---------- 1. 枚举 ----------@dataclass(frozen=True)  
+# ---------- 1. 枚举 ----------
+@dataclass(frozen=True)  
 class _Info:  
     code: int  
     detail: _StrOrPromise  
   
   
 class RespCode(Enum):  
-    OK = _Info(200, _("success"))  
-    CREATED = _Info(201, _("created"))  
+    OK                  = _Info(200, _("success"))
+    CREATED             = _Info(201, _("created"))
   
-    BAD = _Info(400, _("bad request"))  
-    UNAUTHORIZED = _Info(401, _("unauthorized"))  
-    FORBIDDEN = _Info(403, _("forbidden"))  
-    NOT_FOUND = _Info(404, _("not found"))  
+    BAD                 = _Info(400, _("bad request"))
+    UNAUTHORIZED        = _Info(401, _("unauthorized"))
+    FORBIDDEN           = _Info(403, _("forbidden"))
+    NOT_FOUND           = _Info(404, _("not found"))
   
-    SERVER_ERROR = _Info(500, _("server error"))  
-    VALIDATION_ERROR = _Info(500, _("validation error"))  
+    SERVER_ERROR        = _Info(500, _("server error"))
+    VALIDATION_ERROR    = _Info(500, _("validation error"))
   
     @property  
     def code(self) -> int:  
@@ -1011,15 +1062,18 @@ class RespCode(Enum):
     def detail(self) -> str:  
         return str(self.value.detail)  # 自动触发 __str__  
   
-# ---------- 2. 序列化器 ----------class CommonResponseSerializer(serializers.Serializer):  
+
+# ---------- 2. 序列化器 ----------
+class CommonResponseSerializer(serializers.Serializer):  
     status = serializers.BooleanField()  
     code = serializers.IntegerField()  
-    detail = serializers.CharField(allow_blank=True)  
+    detail = serializers.CharField(allow_blank=True, allow_null=True)  
     data = serializers.JSONField(required=False, allow_null=True)  
-    trace_id = serializers.CharField(required=False, allow_blank=True)  
+    trace_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)  
   
   
-# ---------- 3. 统一响应 ----------class CommonResponse(Response):  
+# ---------- 3. 统一响应 ----------
+class CommonResponse(Response):  
     """  
     统一返回对象  
     用法：  
@@ -1027,47 +1081,67 @@ class RespCode(Enum):
         CommonResponse(code=RespCode.NOT_FOUND)       
         CommonResponse.ok(data={"id": 1})       
         CommonResponse.fail(code=RespCode.BAD_REQUEST, detail="missing name")  
+
     对于django原生视图  
        CommonResponse.django()       
        CommonResponse.django(code=RespCode.NOT_FOUND)       
        CommonResponse.django.ok(data={"id": 1})       
        CommonResponse.django.fail(code=RespCode.BAD_REQUEST, detail="missing name")    
     """  
+
     def __init__(  
             self,  
             status: bool = True,  
-            code: RespCode = RespCode.OK,  
+            code: Union[RespCode, int] = RespCode.OK,
             detail: Optional[str] = None,  
             data: Any = None,  
             *,  
             http_code: int = status.HTTP_200_OK,  
             use_trace_id: Optional[bool] = None,  
+            **kwargs
     ):  
         # 未显式 detail 时取枚举默认值  
-        if detail is None:  
-            detail = code.detail  
-  
-        ser_data = {  
-            "status": status,  
-            "code": code.code,  
-            "detail": detail,  
-            "data": data,  
-        }  
-  
+        ser = CommonResponse.format_data(status, code, detail, data, raise_exception=True, use_trace_id=use_trace_id)
+        super().__init__(data=ser.data, status=http_code)
+
+    @staticmethod
+    def format_data(
+            status: bool,
+            code: Union[RespCode, int],
+            detail: str,
+            data: Any,
+            *,
+            raise_exception: bool = False,
+            use_trace_id: Optional[bool] = None,
+    ) -> CommonResponseSerializer:
+        """供 renderer 调用的静态方法"""
+        if isinstance(code, RespCode):
+            if detail is None:
+                detail = code.detail
+            code = code.code
+        
+            
+        ser_data = {
+            "status": status,
+            "code": code,
+            "detail": detail,
+            "data": data,
+        }
+
         # 决定是否添加 trace_id 的核心逻辑  
-        if use_trace_id is None:  
+        if use_trace_id is None:
             # 未传入参数，读取全局配置。getattr 第二个参数是默认值，防止 settings 中未定义而出错。  
-            should_add_trace = getattr(settings, 'USE_TRACE_ID', False)  
-        else:  
+            should_add_trace = getattr(settings, 'USE_TRACE_ID', False)
+        else:
             # 传入了参数，以传入的为准  
-            should_add_trace = use_trace_id  
-  
-        if should_add_trace:  
-            ser_data['trace_id'] = get_trace_id()  
-  
-        ser = CommonResponseSerializer(data=ser_data)  
-        ser.is_valid(raise_exception=True)  
-        super().__init__(data=ser.data, status=http_code)  
+            should_add_trace = use_trace_id
+
+        if should_add_trace:
+            ser_data['trace_id'] = get_trace_id()
+
+        ser = CommonResponseSerializer(data=ser_data)
+        ser.is_valid(raise_exception=raise_exception)
+        return ser
   
     # 快捷方法  
     @classmethod  
@@ -1080,7 +1154,14 @@ class RespCode(Enum):
             http_code: int = status.HTTP_200_OK,  
             use_trace_id: Optional[bool] = None,  
     ) -> CommonResponse:  
-        return cls(status=True, code=code, detail=detail, data=data, http_code=http_code, use_trace_id=use_trace_id)  
+        return cls(
+            status=True, 
+            code=code, 
+            detail=detail, 
+            data=data, 
+            http_code=http_code, 
+            use_trace_id=use_trace_id
+        )  
   
     @classmethod  
     def fail(  
@@ -1092,15 +1173,32 @@ class RespCode(Enum):
             http_code: int = status.HTTP_400_BAD_REQUEST,  
             use_trace_id: Optional[bool] = None,  
     ) -> CommonResponse:  
-        return cls(status=False, code=code, detail=detail, data=data, http_code=http_code, use_trace_id=use_trace_id)  
+        return cls(
+            status=False, 
+            code=code, 
+            detail=detail, 
+            data=data, 
+            http_code=http_code, 
+            use_trace_id=use_trace_id
+        )  
   
+    @classmethod
+    def from_other(cls, data: dict, http_code: int) -> CommonResponse:
+        """
+        从远程返回值中复制一份，使用时需要确保data的值的结构与CommonResponse相同
+        """
+        ser = CommonResponseSerializer(data=data)
+        ser.is_valid(raise_exception=False)
+        return cls(**ser.validated_data, http_code=http_code)
+
     class DjangoHelper(JsonResponse):  
         """  
         一个继承自 JsonResponse 的辅助类，用于原生 Django 视图。  
-        """        def __init__(  
+        """
+        def __init__(
                 self,  
                 status: bool = True,  
-                code: RespCode = RespCode.OK,  
+                code: Union[RespCode, int] = RespCode.OK,  
                 detail: Optional[str] = None,  
                 data: Any = None,  
                 *,  
@@ -1108,30 +1206,8 @@ class RespCode(Enum):
                 use_trace_id: Optional[bool] = None,  
                 **kwargs, # 接收 JsonResponse 的其他参数  
         ):  
-            if detail is None:  
-                detail = code.detail  
-  
-            response_data = {  
-                "status": status,  
-                "code": code.code,  
-                "detail": detail,  
-                "data": data,  
-            }  
-  
-            # 决定是否添加 trace_id 的核心逻辑  
-            if use_trace_id is None:  
-                # 未传入参数，读取全局配置。getattr 第二个参数是默认值，防止 settings 中未定义而出错。  
-                should_add_trace = getattr(settings, 'USE_TRACE_ID', False)  
-            else:  
-                # 传入了参数，以传入的为准  
-                should_add_trace = use_trace_id  
-  
-            if should_add_trace:  
-                response_data['trace_id'] = get_trace_id()  
-  
-            # 这里是关键：调用父类 JsonResponse 的 __init__            
-            # JsonResponse 的第一个参数是 data，状态码是 status            
-            super().__init__(data=response_data, status=http_code, **kwargs)  
+            ser = CommonResponse.format_data(status, code, detail, data, raise_exception=True, use_trace_id=use_trace_id)     
+            super().__init__(data=ser.data, status=http_code, **kwargs)  
   
         @classmethod  
         def ok(  
@@ -1163,8 +1239,18 @@ class RespCode(Enum):
             """            
             return cls(status=False, code=code, detail=detail, data=data, use_trace_id=use_trace_id, http_code=http_code)  
   
+        @classmethod
+        def from_other(cls, data: dict, http_code: int) -> JsonResponse:
+            """
+            从远程返回值中复制一份，使用时需要确保data的值的结构与CommonResponse相同
+            """
+            ser = CommonResponseSerializer(data=data)
+            ser.is_valid(raise_exception=False)
+            return cls(**ser.validated_data, http_code=http_code)
+
     # 将嵌套类赋值给一个类属性，作为命名空间  
     django = DjangoHelper
+
 ```
 
 添加中间件
@@ -1209,7 +1295,7 @@ class TraceIdFilter(logging.Filter):
 ```
 
 在配置中注册中间件和logging的设置
-```python title:setting.py hl:3,11,17
+```python title:setting.py hl:3,11,15-19
 MIDDLEWARE = [  
 	...
     'utils.middlewares.TraceIdMiddleware',  
