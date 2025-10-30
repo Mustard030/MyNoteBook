@@ -2,24 +2,23 @@
 ## 模型（Models）
 每个模型都是一个 Python 的类，这些类继承 `django.db.models.Model`。模型类的每个属性都相当于一个数据库的字段。
 每一个模型需要定义在模块的`models.py`中，加入不在模块中定义，则必须在Meta类中设置`app_label`告诉django这个模型类挂在哪个应用下。
-## 模型字段
+### 模型字段
 模型中最重要且唯一必要的是数据库的字段定义。字段在类属性中定义。定义字段名时应小心避免使用与模型 API 冲突的名称， 如 `clean`, `save`, or `delete` 等。
 模型中每一个字段都应该是某个 `Field` 类的实例， Django 利用这些字段类来实现以下功能：
 - 字段类型用以指定数据库数据类型（如：`INTEGER`, `VARCHAR`, `TEXT`）。
 - 在渲染表单字段时默认使用的 HTML 视图 (如： `<input type="text">`, `<select>`)。
 - 基本的有效性验证功能，用于 Django 后台和自动生成的表单。
 
-### 通用字段设置
-#### `null`
+#### 通用字段设置
+##### `null`
 如果设置为 `True`，当该字段为空时，Django 会将数据库中该字段设置为 `NULL`。默认为 `False` 。null是数据库层面的。
 
-#### `blank`
+##### `blank`
 如果设置为 `True`，该字段允许为空。默认为 `False`。  
 注意该选项与 `null` 不同， `null` 选项仅仅是数据库层面的设置，而 `blank` 是涉及表单验证方面。  
 如果一个字段设置为 `blank=True` ，在进行表单验证时，接收的数据该字段值允许为空，而设置为 `blank=False` 时，不允许为空。  
 
-#### `choices`
-
+##### `choices`
 一系列二元组，用作此字段的选项。如果提供了二元组，默认表单小部件是一个选择框，而不是标准文本字段，并将限制给出的选项。
 
 一个选项列表：
@@ -74,17 +73,917 @@ class Runner(models.Model):
     medal = models.CharField(blank=True, choices=MedalType.choices, max_length=10)
 ```
 
-#### [`default`
+##### `default`
+该字段的默认值。可以是一个值或者是个可调用的对象，如果是个可调用对象，每次实例化模型时都会调用该对象。因此设置为函数时不应该加括号调用该函数，除非你明确知道自己在做什么。
+注意：`lambda`函数不能用于default字段选项，因为它们不能被迁移序列化。其他注意事项见该文档。
 
-该字段的默认值。可以是一个值或者是个可调用的对象，如果是个可调用对象，每次实例化模型时都会调用该对象。
+##### `primary_key`
+如果设置为`True`，则该字段为模型的主键。如果在一个模型中没有任何一个字段设置为`primary_key=True`，则自动添加一个`IntegerField`字段，并设置为主键。
 
-### 字段类型
+##### `unique`
+如果设置为`True`，则字段的值在表中保持唯一。
+
+##### `editable`
+如果是`False`，则该字段不会在管理或其他ModelForm中显示，也会跳过模型验证。默认为`True`。
+
+##### `validators`
+要为该字段运行的验证器列表。详情可以看[验证器](#验证器)。
+
+##### `verbose_name`
+字段备注名，用于展示。如果未指定该参数值， Django 会自动使用字段的属性名作为该参数值，并且把下划线转换为空格。惯例是不将 `verbose_name` 的首字母大写，必要时 Djanog 会自动把首字母转换为大写。
+
+##### `db_column`
+这个字段要使用的数据库列名。如果没有给出列名，Django 将使用字段名。
+
+##### `db_index`
+如果是 `True`，将为该字段创建数据库索引。
+
+##### `db_tablespace`
+如果这个字段有索引，那么要为这个字段的索引使用的**数据库表空间**的名称。默认是项目的`DEFAULT_INDEX_TABLESPACE`设置（如果有），或者是模型的`db_tablespace`（如果有）。如果数据库不支持索引的表空间，则忽略该选项。
+详细请看Meta类中的`db_tablespace`说明。
+
+
+#### 字段类型
+
+### 验证器
+Django 的验证器（validators）是用于验证模型字段、表单字段或其他输入数据是否符合特定规则的可调用对象。它们在数据清洗过程中发挥重要作用，确保数据的完整性和一致性。
+这里要区分 **Django 的模型/表单验证器 (`validators`)** 和 **DRF（Django REST Framework）序列化器字段验证** 的作用和机制，它们虽然目的相似（保证数据合法），但使用场景和触发时机不同。下面详细分析：
+**Django 模型/表单验证器 (`validators`)**
+**定义位置**：直接放在模型字段或表单字段上，例如：
+```python
+from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db import models
+
+class Product(models.Model):
+    price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)]
+    )
+```
+
+**执行时机**：
+- **模型**：`full_clean()` 方法被调用时触发。注意，直接 `save()` 并不会触发验证。
+- **表单**：`is_valid()` 方法触发。
+
+**特点**：
+- 可以复用在多个字段上。
+- 纯函数式或类的可调用对象。
+- 抛出的是 `ValidationError`。
+- 与数据库模型紧密耦合。
+
+**适用场景**：
+- 确保数据库层面数据合法性（可结合迁移、约束）。
+- 表单输入验证。
+
+**DRF 序列化器字段验证**
+**定义位置**：放在 `serializers.Serializer` 或 `serializers.ModelSerializer` 的字段上，例如：
+```python
+from rest_framework import serializers
+
+class ProductSerializer(serializers.Serializer):
+    price = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+    def validate_price(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Price must be non-negative")
+        return value
+```
+
+**执行时机**：
+- 在调用 `serializer.is_valid()` 时触发。
+
+**特点**：
+- 可以在字段级别定义 `validators` 列表，也可以定义 `validate_<field>` 方法进行自定义验证。
+- 抛出的是 `serializers.ValidationError`。
+- 通常只用于 **API 层输入数据验证**，不直接作用于数据库。
+- 支持复杂嵌套对象验证。
+
+**适用场景**：
+- API 接口输入数据校验。
+- 与模型无关的临时验证（例如输入 JSON 但不写数据库）。
+
+通常来说，如果只是提供API调用，DRF的验证器就足够了，但是如果还有其他输入方式，绕过了接口访问数据，则需要添加数据库层的验证约束。
+
+### 字段表达式（Expression）
+字段表达式时DjangoORM中表示SQL表达式的基类，它不是具体的SQL，而是一个可组合的表达式树。字段引用（`F`）、常量（`Value`）、函数（`Func`）、聚合（`Aggregate`）、运算（如：`F(a)+F(b)`）、以及`lookup`、`transform`都是`Expression`的变体。最终目的是将这个表达式树转换为SQL语句和参数。
+
+整体设计架构如
+```
+Expression
+ ├── Func               ← SQL函数调用类
+ │    ├── Lower / Upper / Coalesce / Concat / ...
+ │    ├── Now / Length / Round / Extract / ...
+ │
+ ├── F                  ← 字段引用
+ ├── Value              ← 常量值
+ ├── Aggregate          ← 聚合函数（继承 Func）
+ ├── Lookup / Transform ← 查询lookup系统
+```
+
+**核心方法**
+`as_sql(compiler, connection)`
+- 核心：把表达式编译成 `(sql, params)`。默认实现会遍历 `source_expressions`，通过 `compiler.compile()` 得到每个子表达式的 SQL 与参数，再把它们插入 `template`。
+- 注意：子类常需要重写或在 `template` 基础上自定义渲染逻辑。
+
+`as_<vendor>(compiler, connection, **extra_context)`
+- 用处：按数据库后端覆盖 SQL，比如 `as_postgresql`, `as_mysql`, `as_sqlite`。当存在 vendor 特定实现时，ORM 会优先调用 `as_<vendor>`，否则调用 `as_sql`。
+- 例：`Trunc` / `Now` 在不同 DB 上用不同 SQL。
+
+`contains_aggregate()` / `get_group_by_cols()` / `get_source_expressions()`
+- 用于查询 planner/编译器判断表达式是否包含聚合、是否参与 GROUP BY 等。
+
+#### Func
+```python
+class Func(SQLiteNumericMixin, Expression):
+    """An SQL function call."""
+    function = None  # SQL函数名，继承的时候直接指定用的
+    template = '%(function)s(%(expressions)s)'  # 生成的SQL模板
+    arg_joiner = ', '  # 参数之间的连接符
+    arity = None  # 方法接收的参数数量
+
+    def __init__(self, 
+	    *expressions, # 参数列表
+	    output_field=None, # 返回的结果类型，例如 `CharField()`、`FloatField()`
+	    **extra
+    ):
+        if self.arity is not None and len(expressions) != self.arity:
+            raise TypeError(
+                "'%s' takes exactly %s %s (%s given)" % (
+                    self.__class__.__name__,
+                    self.arity,
+                    "argument" if self.arity == 1 else "arguments",
+                    len(expressions),
+                )
+            )
+        super().__init__(output_field=output_field)
+        self.source_expressions = self._parse_expressions(*expressions)
+        self.extra = extra
+    
+# 即会转化成FUNCTION_NAME(arg1, arg2, ...)
+```
+
+**用法：**
+一、继承`Func`，并指定两个关键参数`function`和`output_field`
+如：
+```python
+from django.db.models import Func, F, CharField, FloatField
+
+class Upper(Func):
+    function = 'UPPER'
+    output_field = CharField()
+
+qs = Author.objects.annotate(upper_name=Upper(F('name')))
+# SELECT UPPER("author"."name") AS "upper_name" FROM "author";
+
+
+class Power(Func):
+    function = 'POWER'
+    output_field = FloatField()
+
+Book.objects.annotate(
+    rating_square=Power(F('rating'), 2)
+)
+# SELECT POWER("book"."rating", 2) AS "rating_square" FROM "book";
+
+# 跨数据库兼容
+class Random(Func):
+    function = 'RANDOM'
+
+    def as_mysql(self, compiler, connection):
+        return self.as_sql(compiler, connection, function='RAND')
+
+# 在PG中生成 RANDOM()
+# 在mysql中生成 RAND()
+```
+
+二、直接使用`Func`
+```python
+from django.db.models import Func, F
+
+Book.objects.annotate(
+    title_length=Func(F('title'), function='LENGTH')
+)
+
+# SELECT LENGTH("book"."title") AS "title_length" FROM "book";
+```
+
+
+#### Lookup
+`RegisterLookupMixin` 是一个用于注册自定义查询操作（lookup）的混入类。它允许开发者为模型字段添加自定义的查询操作，使得在查询时可以使用类似 `field_name__custom_lookup=value` 的语法。这种机制使得 Django 的 ORM 更加灵活和可扩展。
+
+官方的使用方法是：
+```python
+@Field.register_lookup
+class Exact(FieldGetDbPrepValueMixin, BuiltinLookup):
+    lookup_name = 'exact'
+
+    def process_rhs(self, compiler, connection):
+        from django.db.models.sql.query import Query
+        if isinstance(self.rhs, Query):
+            if self.rhs.has_limit_one():
+                if not self.rhs.has_select_fields:
+                    self.rhs.clear_select_clause()
+                    self.rhs.add_fields(['pk'])
+            else:
+                raise ValueError(
+                    'The QuerySet value for an exact lookup must be limited to '
+                    'one result using slicing.'
+                )
+        return super().process_rhs(compiler, connection)
+
+    def as_sql(self, compiler, connection):
+        # Avoid comparison against direct rhs if lhs is a boolean value. That
+        # turns "boolfield__exact=True" into "WHERE boolean_field" instead of
+        # "WHERE boolean_field = True" when allowed.
+        if (
+            isinstance(self.rhs, bool) and
+            getattr(self.lhs, 'conditional', False) and
+            connection.ops.conditional_expression_supported_in_where_clause(self.lhs)
+        ):
+            lhs_sql, params = self.process_lhs(compiler, connection)
+            template = '%s' if self.rhs else 'NOT %s'
+            return template % lhs_sql, params
+        return super().as_sql(compiler, connection)
+```
+
+其中`@Field.register_lookup`用于将这个查询操作注册到模型字段上。`Field`则是对所有字段类型都生效，更一般的会用`@models.CharField.register_lookup`这种方式注册，来指定这个查询API只能用于某个字段类型。
+Django内建的Lookup类继承`BuiltinLookup`，自定义的类需要继承自`Lookup`类用以区分。
+类中的`lookup_name`属性用于`__your_lookup_name`。
+
+##### 关键方法
+
+| 方法                 | 作用                          |
+| ------------------ | --------------------------- |
+| `process_lhs()`    | 处理字段表达式（左侧）                 |
+| `process_rhs()`    | 处理参数（右侧）                    |
+| `as_sql()`         | 生成最终 SQL                    |
+| `lhs` / `rhs`      | 原始表达式对象                     |
+| `lhs_output_field` | 字段类型对象                      |
+| `get_rhs_op()`     | 可重载，用来自定义操作符号（如 `LIKE`、`=`） |
+
+#### Transform
+除了 `Lookup`，还有一种扩展类型叫 `Transform`，用来“转换”字段值再进行查询。比如官方的`Lower`实现。
+主要用于提取或转换（生成中间结果）。它与`Lookup`不同的地方在于`Lookup`最终是用于生成一个`where`条件的，用于比较或判断某个值。
+```python
+from django.db.models import Transform
+
+@CharField.register_lookup
+class Lower(Transform):
+    lookup_name = 'lower'
+
+    def as_sql(self, compiler, connection):
+        lhs, params = compiler.compile(self.lhs)
+        return f"LOWER({lhs})", params
+
+
+Book.objects.filter(name__lower='django')
+
+# 实际生成的SQL为
+LOWER(name) = 'django'
+```
+通常他们只处理左值。
 
 
 
-## Meta类
-Meta类用于模型的配置。几乎所有非字段层面的规则都放置在这里。
 
+### Meta类
+Meta类用于模型的配置。几乎所有非字段层面的规则都放置在这里。比如排序选项（ `ordering` ），数据库表名（ `db_table` ），或是阅读友好的单复数名（ `verbose_name` 和 `verbose_name_plural` ）。这些都不是必须的，并且在模型当中添加 `Meta类` 也完全是可选的。
+
+#### `indexes`和`constraints`和`index_together`和`unique_together`
+
+旧用法是：
+```python
+index_together = [["pub_date", "deadline"]]
+# 或处理单字段，多索引时
+index_together = ["pub_date", "deadline"]
+
+unique_together = [['driver', 'restaurant']]
+# 或处理单字段，多约束时
+unique_together = ['driver', 'restaurant']
+# 一个 ManyToManyField 不能被包含在 unique_together 中
+```
+
+新用法使用`indexes`和`constraints`，详情查看[索引和约束](#索引和约束)参考
+例如：
+```python
+class Customer(models.Model):
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['last_name', 'first_name']),  # 联合索引
+            models.Index(fields=['first_name'], name='first_name_idx'),  # 单字段索引
+        ]
+        
+        constraints = [
+            models.CheckConstraint(check=models.Q(age__gte=18), name='age_gte_18'),
+        ]
+```
+
+#### `abstract`
+如果 `abstract = True`，这个模型将是一个 抽象基类。比如可以将`create_time`、`update_time`这种公用的字段放到抽象基类中，并设置 `abstract = True`。
+基类不会用于创建数据库表。当它被继承时，会自动将字段添加到子类中。
+从抽象基类继承来的字段可被其它字段或值重写，或用 `None` 删除。
+```python
+class Student(CommonInfo):
+    # ...
+    class Meta(CommonInfo.Meta):
+        db_table = 'student_info'
+```
+
+Meta的继承会继承大部分属性，但**不是全部**！例如：
+- **abstract**：子类的`abstract`会自动变为`False`，这意味着抽象基类的子类不会自动变成抽象类。如果你需要一个抽象子类，应该在子类显式设置`abstract=True`。
+- **db_table**：你不可能想要所有继承这个抽象基类的子类用同一个数据表。
+
+由于Python继承的工作方式，如果子类从多个抽象基类继承，则默认情况下仅继承第一个列出的类的 `Meta` 选项（MRO顺序）。为了从多个抽象类中继承 `Meta` 选项，必须显式地声明 `Meta` 继承。例如：
+```python
+class CommonInfo(models.Model):
+    name = models.CharField(max_length=100)
+    age = models.PositiveIntegerField()
+
+    class Meta:
+        abstract = True
+        ordering = ['name']
+
+class Unmanaged(models.Model):
+    class Meta:
+        abstract = True
+        managed = False
+
+class Student(CommonInfo, Unmanaged):
+    home_group = models.CharField(max_length=5)
+
+    class Meta(CommonInfo.Meta, Unmanaged.Meta):
+        pass
+```
+
+注意：对 `related_name` 和 `related_query_name` 要格外小心！
+若你在 `外键` 或 `多对多字段` 使用了 [`related_name`](https://docs.djangoproject.com/zh-hans/3.2/ref/models/fields/#django.db.models.ForeignKey.related_name "django.db.models.ForeignKey.related_name") 或 [`related_query_name`](https://docs.djangoproject.com/zh-hans/3.2/ref/models/fields/#django.db.models.ForeignKey.related_query_name "django.db.models.ForeignKey.related_query_name")，你必须为该字段提供一个 _独一无二_ 的反向名字和查询名字。这在抽象基类中一般会引发问题，因为基类中的字段都被子类继承，且保持了同样的值（包括 [`related_name`](https://docs.djangoproject.com/zh-hans/3.2/ref/models/fields/#django.db.models.ForeignKey.related_name "django.db.models.ForeignKey.related_name") 和 [`related_query_name`](https://docs.djangoproject.com/zh-hans/3.2/ref/models/fields/#django.db.models.ForeignKey.related_query_name "django.db.models.ForeignKey.related_query_name")）。
+
+为了解决此问题，当你在抽象基类中（也只能是在抽象基类中）使用 [`related_name`](https://docs.djangoproject.com/zh-hans/3.2/ref/models/fields/#django.db.models.ForeignKey.related_name "django.db.models.ForeignKey.related_name") 和 [`related_query_name`](https://docs.djangoproject.com/zh-hans/3.2/ref/models/fields/#django.db.models.ForeignKey.related_query_name "django.db.models.ForeignKey.related_query_name")，部分值需要包含 `'%(app_label)s'` 和 `'%(class)s'`。
+
+- `'%(class)s'` 用使用了该字段的子类的小写类名替换。
+- `'%(app_label)s'` 用小写的包含子类的应用名替换。每个安装的应用名必须是唯一的，应用内的每个模型类名也必须是唯一的。因此，替换后的名字也是唯一的。
+
+举个例子，有个应用 `common/models.py`:
+
+```python
+from django.db import models
+
+class Base(models.Model):
+    m2m = models.ManyToManyField(
+        OtherModel,
+        related_name="%(app_label)s_%(class)s_related",
+        related_query_name="%(app_label)s_%(class)ss",
+    )
+
+    class Meta:
+        abstract = True
+
+class ChildA(Base):
+    pass
+
+class ChildB(Base):
+    pass
+```
+`common.ChildA.m2m` 字段的反转名是 `common_childa_related`，反转查询名是 `common_childas`。 `common.ChildB.m2m` 字段的反转名是 `common_childb_related`， 反转查询名是 `common_childbs`。这决定于你如何使用 `'%(class)s'` 和 `'%(app_label)s'` 构建关联名字和关联查询名。但是，若你忘了使用它们，Django 会在你执行系统检查（或运行 [`migrate`](https://docs.djangoproject.com/zh-hans/3.2/ref/django-admin/#django-admin-migrate)）时抛出错误。
+如果你未指定抽象基类中的 [`related_name`](https://docs.djangoproject.com/zh-hans/3.2/ref/models/fields/#django.db.models.ForeignKey.related_name "django.db.models.ForeignKey.related_name") 属性，默认的反转名会是子类名，后接 `'_set'` 。这名字看起来就像你在子类中定义的一样。比如，在上述代码中，若省略了 [`related_name`](https://docs.djangoproject.com/zh-hans/3.2/ref/models/fields/#django.db.models.ForeignKey.related_name "django.db.models.ForeignKey.related_name") 属性， `ChildA` 的 `m2m` 字段的反转名会是 `childa_set` ， `ChildB` 的是 `childb_set`。
+
+
+
+#### `app_label`
+它控制这个模型在整个项目中归属于哪个app。例如：
+```python
+# 文件路径: blog/models.py
+class Article(models.Model):
+    ...
+
+# django会自动认为
+Article._meta.app_label == "blog"
+```
+如果这个模型没有放在默认的app路径中时，比如模型定义在一个公共模块里。或者是一个动态导入或注册的模型，或者定义模型时，没有在`INSTALLED_APPS` 记录对应的 app，Django 就无法判断这个模型属于哪个应用。需要在模型的 `Meta` 中显式声明否则 Django 会报错。
+
+app_label的作用：
+1. Django 通过 `app_label` 和模型名组合唯一标识模型：`<app_label>.<model_name>`
+这就是为什么可以在外键、信号或 admin 中写：`ForeignKey('library.Book', on_delete=models.CASCADE)`，而不是导入整个类。
+
+2. 影响迁移文件
+`app_label` 决定模型的迁移文件会被写入哪个应用的 `migrations/` 文件夹。
+
+3. 影响 `ContentType`、权限等系统表
+Django 的权限系统、ContentType、admin 等都依赖于 `<app_label>.<model>` 这个唯一标识。  因此，如果 `app_label` 不对，权限管理、信号注册、admin 识别都会出问题。
+
+典型使用场景：
+**在一个“公共模块”中定义模型**
+假设你有多个 app 都用到同样的“审计基类”：
+```python
+# core/models/base.py
+class TimeStampedModel(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+        app_label = "core"  # 可选，如果 core 不是 app
+```
+
+**在外部模块中定义但属于某个 app**
+```python
+# external_models.py
+class RemoteUser(models.Model):
+    ...
+    class Meta:
+        app_label = "users"  # 明确指向 users 应用
+```
+
+**动态创建模型时（例如在元编程或插件系统中）**
+```python
+MyDynamicModel = type(
+    "MyDynamicModel",
+    (models.Model,),
+    {
+        "__module__": __name__,
+        "name": models.CharField(max_length=50),
+        "Meta": type("Meta", (), {"app_label": "plugins"}),
+    }
+)
+
+```
+
+**`_meta.label` 与 `_meta.label_lower`**
+
+| 属性                        | 返回值                   | 示例               | 用途                         |
+| ------------------------- | --------------------- | ---------------- | -------------------------- |
+| `model._meta.label`       | `app_label.ModelName` | `"blog.Article"` | 标准标识，区分大小写                 |
+| `model._meta.label_lower` | `app_label.modelname` | `"blog.article"` | 小写标识，常用于数据库/ContentType 对比 |
+
+
+
+#### `ordering`
+对象的默认排序，用于获取对象列表时：
+
+```python
+ordering = ['-order_date']
+```
+
+这是一个字符串和／或查询表达式的元组或列表。每一个字符串都是一个字段名，前面有一个可选的“-”字头，表示降序。没有前缀“-”的字段将按升序排列。使用字符串“?”来随机排序。
+
+例如，要按 `pub_date` 字段升序排列，使用以下方法：
+
+```python
+ordering = ['pub_date']
+
+```
+要按 `pub_date` 降序排列，请使用：
+
+```python
+ordering = ['-pub_date']
+```
+
+要按 `pub_date` 降序，然后按 `author` 升序，请使用：
+
+```python
+ordering = ['-pub_date', 'author']
+```
+
+你也可以使用 查询表达式。要按 `author` 升序排列，并使空值最后排序，请使用：
+
+```python
+from django.db.models import F
+ordering = [F('author').asc(nulls_last=True)]
+```
+
+
+#### `get_latest_by`
+模型中的字段名或字段名列表，通常是 `DateField`，`DateTimeField` 或 `IntegerField`。这指定了在你的模型中使用的默认字段 `Manager` 的 `last()` 和 `earliest()` 方法。
+如：`get_latest_by = ['-priority', 'order_date']`
+
+
+#### `order_with_respect_to`
+当你在模型中指定：
+```python
+class Meta:
+    order_with_respect_to = 'some_field'
+```
+
+Django 会：
+1. 给模型添加一个内部字段 `_order`，用于保存对象在父对象中的顺序。
+2. 提供一些额外方法来操作顺序：
+    - `get_RELATED_order()`
+    - `set_RELATED_order([...])`
+    - `get_RELATED_ordering()`
+3. 允许你在父对象上下文中进行对象排序，而不会影响全局查询结果。
+
+> **核心概念**：对象在全局表中没有固定顺序，但可以在某个“父对象”上下文中有序。
+
+示例：
+假设有一个博客系统，每篇文章有多个评论，我们希望评论在同一篇文章下有顺序：
+```python
+from django.db import models
+
+class Post(models.Model):
+    title = models.CharField(max_length=100)
+
+class Comment(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE)
+    text = models.TextField()
+
+    class Meta:
+        order_with_respect_to = 'post'
+```
+
+**生成的额外功能**
+1. **自动添加 `_order` 字段**（Django 内部管理）
+2. **额外方法**（自动生成在 Comment 实例上）：
+```python
+post = Post.objects.get(id=1)
+comments = post.comment_set.all()  # 注意：查询默认没有排序
+
+# 查看顺序
+post.get_comment_order()  # 返回 [comment1.id, comment2.id, ...]
+
+# 修改顺序
+post.set_comment_order([comment2.id, comment1.id])
+```
+
+Django 会在 `Comment` 表中新增 `_order` 列，用于记录相对于同一 `post` 的顺序：
+
+| id  | post_id | text  | _order |
+| --- | ------- | ----- | ------ |
+| 1   | 1       | Hello | 0      |
+| 2   | 1       | World | 1      |
+这个字段只对**一对多关系**有效，`order_with_respect_to` 的字段必须是 `ForeignKey` 或 `OneToOneField` 类型（父对象上下文）。且只能用于非抽象模型。在 Django Admin 中，你可以直接拖拽排序，Admin 会使用 `_order` 保存顺序。
+
+
+
+#### `default_permissions`和`permissions`
+如果你在用Django自带的权限管理机制，这两个属性会是权限控制的好工具。
+
+默认情况下，Django 会为每个模型生成四个权限：
+1. `add_modelname` → 添加对象权限
+2. `change_modelname` → 修改对象权限
+3. `delete_modelname` → 删除对象权限
+4. `view_modelname` → 查看对象权限（从 Django 2.1 开始新增）
+如果你想禁用某些默认权限，可以修改或覆盖它：
+```python
+class Meta:
+    default_permissions = ('add', 'change')  # 只生成 add 和 change 权限
+```
+设置为空元组 `()` → 不生成任何默认权限。
+
+`permissions`用于生成默认权限以外的额外权限。
+```python
+class Meta:
+    permissions = [
+        ("can_publish", "Can publish articles"),
+        ("can_review", "Can review comments"),
+    ]
+```
+每个权限是 `(codename, human_readable_name)` 的元组：
+- `codename` → 数据库中存储的唯一标识（用于 `user.has_perm()`）
+- `human_readable_name` → Admin 或文档中显示的描述
+
+使用：
+```python
+user.has_perm('myapp.can_publish')  # 判断用户是否有这个权限
+```
+
+#### `base_manager_name`和`default_manager_name`
+`base_manager_name` 和 `default_manager_name` 是 **与 `_base_manager`、`_default_manager` 相对应的“Meta 配置项”**，它们用于 **显式指定 Django 在内部为模型选用哪个 Manager 作为底层或默认入口**。
+
+| 类型      | 名称                     | 层级    | 作用                                                   |
+| ------- | ---------------------- | ----- | ---------------------------------------------------- |
+| Meta 配置 | `base_manager_name`    | 配置级   | 告诉 Django：用哪个字段名作为 `_base_manager`(默认为`objects`)     |
+| Meta 配置 | `default_manager_name` | 配置级   | 告诉 Django：用哪个字段名作为 `_default_manager`(默认也为`objects`) |
+| 属性引用    | `_base_manager`        | 运行时属性 | ORM 内部访问的“底层 Manager”                                |
+| 属性引用    | `_default_manager`     | 运行时属性 | ORM 外部访问的“默认 Manager”                                |
+
+例如：
+```python
+class PublishedManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(published=True)
+
+class Article(models.Model):
+    title = models.CharField(max_length=100)
+    published = models.BooleanField(default=False)
+
+    all_objects = models.Manager()     # 全部对象
+    objects = PublishedManager()       # 只返回已发布对象
+
+    class Meta:
+        base_manager_name = 'all_objects'
+        default_manager_name = 'objects'
+```
+
+即使你定义了自定义过滤器，`_base_manager` 仍然可以访问所有对象。
+
+一句话：`Model._default_manager` 是 Django ORM “公开使用”的主入口，而 `Model._base_manager` 是 Django 内部始终依赖的“原始底层入口”。如果你定义了多个管理器，**就应该显式配置这两个 Meta 属性**，并且保证`_base_manager`指向的管理器是一个最初始的默认管理器，避免歧义或潜在 bug。
+
+#### `db_table`
+用于模型的数据库表的名称。默认的生成规则是：表名 = app_label（应用名） + 下划线 + 模型类名（小写）。
+这样 Django 可以保证不同 app 中即使模型重名也不会冲突。如果你希望表名不同，可以在模型的 `Meta` 类中设置 `db_table`。这时会完全按照设置的表名生成表，不会自动添加app_label前缀。
+
+#### `db_tablespace`
+此模型要使用的 **数据库表空间** 名称。如果有设置的话，默认是项目的 `DEFAULT_TABLESPACE` 配置。如果后端不支持表空间，则忽略此选项。你会注意到，不光表中可以设置这个属性，字段中也可以设置这个属性。
+首先：`db_tablespace` 是一个可选的数据库配置项，用于指定表或索引**存储在哪个表空间（tablespace）** 中。
+
+> 表空间（Tablespace）是数据库物理存储的一种逻辑划分方式，用于把不同表或索引放在不同的磁盘、文件或分区上，以便进行性能调优或资源隔离。
+
+例如在 Oracle、PostgreSQL 中，表空间就是：
+```sql
+CREATE TABLESPACE fast_disk LOCATION '/ssd/data';
+CREATE TABLESPACE slow_disk LOCATION '/hdd/data';
+```
+
+你可以决定哪张表放在哪块磁盘上。
+
+当你在模型的 `Meta` 中定义 `db_tablespace = 'customer_space'`，这表示：整张表及其主键索引、唯一约束索引，**默认都放到这个表空间中**。也就是说，`Meta.db_tablespace` 是对整个模型的默认设置。
+
+在字段级别（主要是索引相关字段），你也可以指定：`name = models.CharField(max_length=100, db_index=True, db_tablespace='index_space')`
+此时含义是：
+- **表本身的数据行** 存储在 `customer_space`
+- **name 字段的索引** 存储在 `index_space`
+这种做法通常用于**性能优化**：把热数据的索引放到更快的磁盘；把大表本身放在便宜的机械硬盘。
+
+Django 在设计上**尊重数据库的物理层优化能力**，同时要保持 ORM 的灵活性。
+
+#### `managed`
+默认值为`True`。
+其最本质的含义是：Django 是否会在执行 `makemigrations` 和 `migrate` 时，为这个模型创建、修改或删除数据库表。表示该模型由 Django ORM **全权管理**。
+
+如果设置为`False`，则告诉Django：不要为这个模型创建或修改数据库表。Django 不会为它生成迁移文件。不会在数据库中创建、修改或删除表。但仍然**可以使用 Django ORM** 进行查询、插入、更新、删除操作。
+
+#### `verbose_name`和`verbose_name_plural`
+`verbose_name`：对象的可读名称，单数。如果没有给定，Django 将使用一个 munged 版本的类名：`CamelCase` 变成 `camel case`。
+`verbose_name_plural`：对象的复数名称。如果没有给定，Django 将使用 `verbose_name` + `"s"`。
+
+#### 只读的 `Meta` 属性
+- **`label`**：返回模型的 "应用标签"（即应用名称）和模型名称的组合，格式为 `app_label.ModelName`，其中 `ModelName` 是模型的类名，首字母大写。
+- **`label_lower`**：返回模型的 "应用标签" 和模型名称的组合，格式为 `app_label.modelname`，其中 `modelname` 是模型的类名，首字母小写。
+
+
+
+### 索引和约束
+#### 索引
+> 索引是在 `django.db.models.indexes` 中定义的，但为了方便，它们被导入到 `django.db.models` 中。标准的惯例是使用 `from django.db import models` 并将索引称为 `models.<IndexClass>`。
+
+用于在数据库层创建索引（普通索引或表达式索引）
+可以指定：
+- 索引名称 `name`，必须唯一
+- 索引字段 `fields`
+- 条件 `condition`（`Q` 对象，用于部分索引）
+- 顺序 `OpClass` / `orders`
+- 使用表达式 `expressions`（Django 3.2+）
+- `db_tablespace`，指定索引表空间
+- `include`，PostgreSQL 支持，额外包含字段但不参与索引(避免回表)
+- `unique`，是否唯一索引（部分数据库支持）
+
+
+基本用法：
+```python
+from django.db import models
+from django.db.models import Index
+
+class Book(models.Model):
+    title = models.CharField(max_length=100)
+    published = models.DateField()
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        indexes = [
+            # 普通索引
+            Index(fields=['title'], name='idx_title'),
+
+            # 组合索引
+            Index(fields=['title', 'published'], name='idx_title_pub'),
+
+            # 条件索引（部分索引，仅 is_active=True）
+            Index(fields=['title'], name='idx_title_active', condition=models.Q(is_active=True)),
+        ]
+```
+
+**IndexExpression**
+作用
+- 可以在索引中使用 **表达式** 而不是直接字段
+- 常见用途：
+    - 大小写不敏感索引
+    - 字段函数索引（如 `Lower`, `Upper`, `Length`, `Coalesce`, `Concat`）
+    - 计算列索引
+
+```python
+from django.db.models import Index
+from django.db.models.functions import Lower
+
+class User(models.Model):
+    ...
+
+    class Meta:
+        indexes = [
+            Index(Lower('username'), name='idx_username_lower'), # 大小写不敏感索引
+            
+            Index(Length('title'), name='idx_title_len'),  # 长度索引
+            
+            Index(Lower(F('first_name')) + Lower(F('last_name')), name='idx_fullname_lower'),  # 组合表达式索引
+            
+            Index(F('quantity') * F('price'), name='idx_total_price'),
+            
+            Index(Lower(Concat('first_name', 'last_name')), name='idx_fullname_lower'),
+        ]
+
+
+User.objects.filter(username__iexact='Alice')  # 可以走索引
+```
+#### 约束
+>你必须始终为约束指定一个唯一的名称。
+>因此，你通常不能在抽象基类上指定一个约束，因为 `Meta.craces` 选项是由子类继承的，每次的属性值（包括 `name`）都完全相同。
+>为了解决名称碰撞的问题，名称的一部分可能包含 `'%(app_label)s'` 和 `'%(class)s'`，它们分别被具体模型的小写应用标签和类名所代替。
+>例如 `CheckConstraint(check=Q(age__gte=18)，name='%(app_label)s_%(class)s_is_adult')`。
+
+Django 提供了两种主要的约束类型：
+- **`CheckConstraint`**：用于确保字段值符合特定条件。
+- **`UniqueConstraint`**：用于确保字段值的唯一性。
+
+这些约束通过在模型的 `Meta.constraints` 中定义来实现。
+
+`CheckConstraint` 示例：
+`CheckConstraint` 用于在数据库级别强制执行特定的条件。
+`CheckConstraint` 只有`check`、`name`两个参数。
+- `check`：一个 `Q` 对象或布尔值 `Expression`，它指定了你要强制约束的检查。
+- `name`：约束的名称。你必须始终为约束指定一个唯一的名称。
+```python
+from django.db import models
+from django.db.models import Q
+
+class Product(models.Model):
+    name = models.CharField(max_length=100)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(  # 确保 `price` 字段的值大于或等于 0。
+                check=Q(price__gte=0),
+                name='price_non_negative'
+            ),
+        ]
+```
+
+`UniqueConstraint` 示例：
+`UniqueConstraint` 用于确保字段组合的唯一性。
+`UniqueConstraint` 提供了一些高级选项：
+- **`condition`**：指定约束的条件。
+- **`deferrable`**：设置约束是否可以推迟。
+- **`include`**：在索引中包含额外的字段。
+- **`opclasses`**：指定 PostgreSQL 操作符类。
+
+```python
+from django.db import models
+
+class Booking(models.Model):
+    room = models.CharField(max_length=10)
+    date = models.DateField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(  # `UniqueConstraint` 确保每个房间在每个日期只能被预订一次。
+                fields=['room', 'date'],
+                name='unique_room_date'
+            ),
+            
+            models.UniqueConstraint(  # `UniqueConstraint` 确保 `order_number` 字段的值唯一，并且约束是可推迟的。
+                fields=['order_number'],
+                name='unique_order_number',
+                deferrable=Deferrable.DEFERRED
+            ),
+        ]
+```
+
+注意：`CheckConstraint` 和 `UniqueConstraint` 的验证通常在 `save()` 时进行，而不是在 `full_clean()` 时。
+默认情况下，约束条件是不推迟的。推迟的约束条件在事务结束前不会被强制执行。即时约束将在每条命令后立即执行。
+
+### 模型继承
+Django有三种可用的继承风格：
+1. 常见情况下，仅将父类用于子类公共信息的载体，因为你不会想在每个子类中把这些代码都敲一遍。这样的父类永远都不会单独使用，所以 [抽象基类](#`abstract`)是你需要的。
+2. 若你继承了一个模型（可能来源其它应用），且想要每个模型都有对应的数据表，则看多表继承。
+3. 若你只想修改模型的 Python 级行为，而不是以任何形式修改模型字段，则查看代理模型。
+
+模型的多重继承 = Python继承 + ORM特殊规则
+和Python一样，可以让一个模型同时继承多个父类。但是如果有同名的属性或则Meta规则，按第一个显式定义的类优先（MRO）。
+
+主键冲突也是一个容易出错的地方，解决方案是显式命名不同的主键名称，或者用共同祖先+OneToOneField显式链接（官方推荐）
+```python
+class Piece(models.Model):
+    pass
+
+class Article(Piece):
+    article_piece = models.OneToOneField(Piece, on_delete=models.CASCADE, parent_link=True)
+
+class Book(Piece):
+    book_piece = models.OneToOneField(Piece, on_delete=models.CASCADE, parent_link=True)
+
+class BookReview(Book, Article):
+    pass
+```
+
+在Python中，子类可以使用相同的字段名以覆盖父类的定义，但是在Django中这是非法操作，因为数据库列不允许重复定义。但是如果父类是抽象模型，则是允许覆盖或者删除的。但是要求显式声明。
+```python
+class Author(models.Model):
+    name = models.CharField(max_length=50)
+
+class Writer(Author):
+    name = models.CharField(max_length=50)  # ❌ 不允许重复字段名
+    
+class Base(models.Model):
+    name = models.CharField(max_length=50)
+
+    class Meta:
+        abstract = True
+        
+class Derived(Base):
+    name = None  # ✅ 删除字段
+```
+
+并且字段的隐式属性也会冲突，有些字段（特别是关系型字段）会生成额外的属性：
+- `ForeignKey` 会生成 `xxx_id`
+- `related_name` / `related_query_name` 也会生成反向访问器
+因此，如果重写了这些字段，**这些隐式生成的属性也要一起考虑**。否则 Django 会抛出字段冲突错误。
+
+如果一个app下面的模型太多，放在一个`models.py`里面不方便管理，可以删除`models.py`，改为`models` 目录，这个目录包含一个 `__init__.py` 文件和存储模型的文件。你必须在 `__init__.py` 文件中导入这些模块。这样 Django 仍然能识别到它们是同一个 app 的模型。
+
+#### 抽象基类
+即Meta中设置了`abstract = True`的模型类。查看[上面的文档](#`abstract`)。
+
+#### 多表继承
+Django 支持的第二种模型继承方式是层次结构中的每个模型都是一个单独的模型。**每个模型都指向分离的数据表**，且可被独立查询和创建。继承关系介绍了子类和父类之间的连接（通过一个自动创建的 `OneToOneField` ）。比如：
+```python
+class Place(models.Model):
+    name = models.CharField(max_length=50)
+    address = models.CharField(max_length=80)
+
+class Restaurant(Place):
+    serves_hot_dogs = models.BooleanField(default=False)
+    serves_pizza = models.BooleanField(default=False)
+```
+
+`Place` 的所有字段均在 `Restaurant` 中可用，虽然数据分别存在不同的表中。
+若有一个 `Place` 同时也是 `Restaurant`，你可以通过小写的模型名将 `Place` 对象转为 `Restaurant` 对象。
+```python
+>>> p = Place.objects.get(id=12)
+# If p is a Restaurant object, this will give the child class:
+>>> p.restaurant
+<Restaurant: ...>
+```
+
+然而，若上述例子中的 `p` _不是_ 一个 `Restaurant` （它仅是个 `Place` 对象或是其它类的父类），指向 `p.restaurant` 会抛出一个 `Restaurant.DoesNotExist` 异常。
+`Restaurant` 中自动创建的连接至 `Place` 的 `OneToOneField` 看起来像这样：
+```python
+place_ptr = models.OneToOneField(
+    Place, 
+    on_delete=models.CASCADE,
+    parent_link=True,
+    primary_key=True,
+)
+```
+可以在 `Restaurant` 中重写该字段，通过申明你自己的 `OneToOneField`，并设置 `parent_link=True`。
+
+目前看起来一切都没有问题，但是如果此时再在子类加一个`ManyToManyField`，默认情况下，Django会为其自动生成父类的反向关系名称，且父类的反向关系名称同样遵循 `<modelname>_set` 规则，但是隐式生成的指向父类的字段同样也是这个名称规则，所以这里产生了冲突。
+简而言之：同一个子类里面有两个指向同一个父类的关系字段时，由于没有指定父类**反向访问的属性名（`related_name`）** 导致父类不知道指向子类的哪个字段（因为默认生成规则相同，导致生成的名字也相同）。
+因此，解决办法为：无论何时，一定要手动指定`related_name`，避免生成错误。
+
+多表继承情况下，子类不会继承父类的`Meta`。所有的 `Meta` 类选项已被应用至父类，在子类中再次应用会导致行为冲突（与抽象基类中应用场景对比，这种情况下，基类并不存在）。故，子类模型无法访问父类的  `Meta` 类。不过，有限的几种情况下：若子类未指定 `ordering` 属性或 `get_latest_by` 属性，子类会从父类继承这些。如果父类有排序，而你并不期望子类有排序，你可以显示的禁止它 `ordering = []`。
+
+#### 代理模型
+使用多表继承的时候，每个子类模型都会单独生成一个新表，这一般是期望的行为，因为子类需要一个地方存储基类中不存在的额外数据字段。不过有时候你只想修改模型的Python级行为——可能是修改默认管理器，或添加一个方法。
+简单地说：代理模型与原模型共用同一张数据表，但是他们的行为有所不同。
+例如：
+```python
+class Person(models.Model):
+    first_name = models.CharField(max_length=30)
+    last_name = models.CharField(max_length=30)
+
+class MyPerson(Person):
+    class Meta:
+        proxy = True
+
+    def do_something(self):
+        # ...
+        pass
+```
+
+关键在于设置`Meta.proxy=True`。
+
+无论是用哪个类去创建实例，都会放在`person`表里，但是要注意，在Python层面他们仍然是两个不同的类对象，**不会自动互换**。
+
+我们可以在代理模型中更改默认的排序方式，也可以分别指定自定义管理器（如果代理模型中不指定管理器，也会继承父类的管理器，但是如果代理模型定义了管理器，则不会影响到父类的管理器）。代理模型继承父模型的 Meta 属性，可以覆盖部分属性，如：`ordering`、`default_manager_name`。但是不能覆盖影响数据库表结构的属性（如 `db_table`、字段定义等），因为表结构仍是父模型的。
+
+代理模型的意义在于 **复用父模型数据表 + 扩展 Python 层功能**。它不能改变数据库结构、不能引入新字段、也不能跨多个表。它唯一能做的是：**复用同一张表的数据，增加方法、修改排序或默认管理器等逻辑。**
+
+限制：
+1. 代理模型必须继承自一个非抽象模型类：因为代理模型是对已有模型的“代理”，所以它必须存在一个实际存在的数据表可以操作。
+2. 不能继承多个非抽象模型类：因为代理模型不能在不同数据表之间提供任何行间连接。
+3. 可以继承任意数量的抽象模型类，只要它们不定义字段：这是 Django 为了防止代理模型破坏数据库结构的限制。因为代理模型 **不会生成新表**，所以如果抽象模型中定义了字段，这些字段就没有地方可以存储。
 
 ## 视图（Views）
 
@@ -230,6 +1129,7 @@ class RedirectView(View):
 
 ## 中间件
 
+
 ## 路由
 
 ## 安全
@@ -288,11 +1188,11 @@ CORS_ORIGIN_WHITELIST = ['https://www.example.com']  # 仅允许主站跨域
 
 #### ALLOWED_HOSTS
 
-**作用​**​: ​**​安全基础​**​，防止 HTTP Host 头攻击。Django 只响应请求头中 `Host` 或 `X-Forwarded-Host` 与此列表匹配的请求。Django 在验证 HTTP Host 头时，会**忽略**端口部分，只比较域名或 IP 地址。允许一个域名意味着​**​允许该域名的所有端口请求​**
+**作用​**​: ​**​安全基础​**​，防止 HTTP Host 头攻击。Django 只响应请求头中 `Host` 或 `X-Forwarded-Host` 与此列表匹配的请求。Django 在验证 HTTP Host 头时，会**忽略**端口部分，只比较**域名**或 **IP 地址**。允许一个域名意味着​**​允许该域名的所有端口请求​**。即这个后端服务挂载的域名。例如：`api.xx.com`。
 
 ```python
 ALLOWED_HOSTS = [
-    'example.com',        # 精确域名
+    'api.example.com',        # 精确域名
     '.example.com',       # 匹配 *.example.com 的所有子域
     'localhost',
     '127.0.0.1',
@@ -1045,6 +1945,7 @@ class _Info:
 class RespCode(Enum):  
     OK                  = _Info(200, _("success"))
     CREATED             = _Info(201, _("created"))
+    DELETED             = _Info(204, _("deleted"))
   
     BAD                 = _Info(400, _("bad request"))
     UNAUTHORIZED        = _Info(401, _("unauthorized"))
@@ -1890,6 +2791,7 @@ router = SimpleRouter(trailing_slash=False)
    - 对象级 `validate`
 5. 都可以嵌套（Nested Serializer），也支持 `source=`、`read_only=`、`write_only=`、`required=` 等通用参数。
 
+
 差异：
 
 | 维度                  | Serializer    | ModelSerializer                                                                                |
@@ -1925,12 +2827,13 @@ class BaseSerializer(Field):
 
 book = Book.objects.get(pk=1)
 ser = BookSerializer(instance=book)   # 只有 instance
-ser.data                              # → {'id':1,'title':'三体',...}
+return Response(ser.data)             # → {'id':1,'title':'三体',...}
 
 
 payload = {'title': '三体Ⅲ', 'price': 29.9}
 ser = BookSerializer(data=payload)   # 只有 data
 ser.is_valid(raise_exception=True)   # 校验
+ser.validated_data                   # data中合法的数据
 
 
 book = Book.objects.get(pk=1)        # 已存在的模型实例
@@ -1952,6 +2855,175 @@ serializer.data
 ```
 
 反序列化多个对象的默认行为是支持创建多个对象，但不支持多个对象更新。有关如何支持或自定义这两种情况的更多信息，请参阅下面的 [ListSerializer](#ListSerializer) 文档。
+
+### 常用字段和方法
+
+#### `.data`
+返回已验证或序列化后的要输出给前端的数据，在此时已经完全是一个可 JSON 化数据（字符串、数字、列表、字典等），是最终阶段的输出。在这个阶段就会调用`.to_representation()`，这里面又会调用`field.to_representation(attribute)`从而将每个字段转为可输出的JSON数据。如果是通过`Serializer`的`instance`参数传入，则可以直接调用。
+
+#### `.initial_data`
+创建序列化器时传入的 **原始输入数据**（通常是前端提交的 JSON）。
+```python
+serializer = UserSerializer(data={'username': 'Tom'})
+print(serializer.initial_data)
+# {'username': 'Tom'}
+```
+
+#### `.is_valid(raise_exception=False)`
+只有通过`Serializer`的`data`参数传入时，才需要走`is_valid`校验。
+1. 调用 `to_internal_value()` 将原始输入 → Python 对象；
+2. 调用每个字段的 `run_validation()`；
+    - 包括字段的 `.validate_<field>()`
+3. 收集所有字段验证结果后，调用 `validate(self, attrs)`；
+4. 若无异常 → 将结果存入 `.validated_data`。若有异常则存入`.errors`或直接抛出异常（根据`raise_exception`参数决定）
+
+源码：
+```python
+def is_valid(self, raise_exception=False):
+	...
+	
+	if not hasattr(self, '_validated_data'):
+		try:
+			self._validated_data = self.run_validation(self.initial_data)
+		except ValidationError as exc:  # 捕获ValidationError并将detail给_errors
+			self._validated_data = {}
+			self._errors = exc.detail
+		else:
+			self._errors = {}
+
+	if self._errors and raise_exception:
+		raise ValidationError(self.errors)
+
+	return not bool(self._errors)
+```
+
+DRF 的 `Serializer.run_validation()` 内部会这样处理：
+```python
+errors = {}
+for field in self.fields.values():
+    try:
+        validated_value = field.run_validation(value)
+    except ValidationError as exc:
+        errors[field.field_name] = exc.detail
+
+```
+
+所以它会逐个字段验证，并捕获所有字段的异常存入 `errors` 字典。  
+最后如果 `errors` 不为空，就一起 raise 出一个 `ValidationError(errors)`。
+
+#### `.validated_data`
+与`.data`容易混淆，是调用 `is_valid()` 后，经过验证并转换成 **Python 原生类型** 的数据。是从前端拿到JSON格式数据后，转换为符合序列化器规定的格式的数据。通常代表开始处理这个数据。
+例如：
+序列化器中定义了`group`是一个外键，那么`validated_data`字典中的`group`就是一个模型实体，而不是输入的字符串或id。这份数据可以直接用于落库。比如`ModelSerializer.save()`使用的就是`validated_data`。
+更本质上来说，他是`Serializer.is_valid()`之后`self._validated_data`的结果（查阅`.is_valid()`的实现）
+
+#### `.errors`
+当 `is_valid()` 失败时，保存所有字段或全局错误。查看`.is_valid()`的底层逻辑
+
+
+#### `.save(**kwargs)`
+将已验证的数据保存（仅 `ModelSerializer` 或你重写了 `create()` 时可用）
+
+内部逻辑：
+```python
+if self.instance is None:
+    return self.create(validated_data)
+else:
+    return self.update(self.instance, validated_data)
+```
+
+
+#### `.create(validated_data)`
+用于创建新对象。`ModelSerializer` 会自动实现。普通序列化器则需要自己重写这个方法。内部直接使用`self.validated_data`的数据进行保存。
+
+#### `.update(instance, validated_data)`
+用于更新已有对象。内部直接使用`self.validated_data`的数据进行更新。
+
+#### `.fields`
+保存序列化器定义的字段集合
+```python
+print(serializer.fields)
+# OrderedDict([('username', CharField()), ('age', IntegerField())])
+```
+
+#### `.validate_<field>(self, value)`
+针对单个字段的验证逻辑。
+
+#### `.validate(self, attrs)`
+跨字段或整体校验逻辑。
+
+#### `.to_representation(instance)`
+定义序列化（Python 对象 → JSON）的行为。  
+常用于定制输出格式。
+
+#### `.to_internal_value(data)`
+定义反序列化（JSON → Python 数据）的行为。
+常用于自定义输入处理逻辑。
+
+#### `.get_fields()`
+动态生成字段（如根据请求用户动态控制字段显示）
+```python
+return copy.deepcopy(self._declared_fields)
+```
+
+#### `.get_<field>_display()`
+对 choice 类型字段返回可读文本
+
+
+**典型使用顺序总结**
+
+| 阶段  | 操作                                             | 结果                  |
+| --- | ---------------------------------------------- | ------------------- |
+| 初始化 | `serializer = MySerializer(data=request.data)` | 获取原始数据              |
+| 验证  | `serializer.is_valid(raise_exception=True)`    | 生成 `validated_data` |
+| 保存  | `serializer.save()`                            | 创建 / 更新模型           |
+| 响应  | `return Response(serializer.data)`             | 输出序列化数据             |
+
+| 分类   | 常用属性                             | 常用方法                                             |
+| ---- | -------------------------------- | ------------------------------------------------ |
+| 输入处理 | `initial_data`, `validated_data` | `is_valid()`, `validate_<field>()`, `validate()` |
+| 输出处理 | `data`, `fields`                 | `to_representation()`                            |
+| 错误处理 | `errors`                         | ——                                               |
+| 保存逻辑 | ——                               | `save()`, `create()`, `update()`                 |
+| 动态控制 | `context`                        | `get_fields()`                                   |
+
+
+
+### ValidationError
+签名：
+```python
+class ValidationError(APIException):
+    status_code = status.HTTP_400_BAD_REQUEST
+    default_detail = _('Invalid input.')
+    default_code = 'invalid'
+
+    def __init__(self, detail=None, code=None):
+        if detail is None:
+            detail = self.default_detail
+        if code is None:
+            code = self.default_code
+
+        # For validation failures, we may collect many errors together,
+        # so the details should always be coerced to a list if not already.
+        if isinstance(detail, tuple):
+            detail = list(detail)
+        elif not isinstance(detail, dict) and not isinstance(detail, list):
+            detail = [detail]
+
+        self.detail = _get_error_details(detail, code)
+```
+
+因为序列化器校验时只会捕获这个异常类型，所以校验错误的字段尽可能抛出这个类型。
+
+由于继承了`APIException`，在经过drf的`exception_handler`时，会自动包装成字典格式或列表
+```python
+if isinstance(exc.detail, (list, dict)):
+	data = exc.detail
+else:
+	data = {'detail': exc.detail}
+```
+因此如果要捕获这个类型，请在`response = exception_handler(exc, context)`前自行捕获并处理。
+
 
 ---
 ### Serializer
