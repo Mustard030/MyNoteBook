@@ -53,7 +53,30 @@ sequenceDiagram
 
 
 
+# JWT
 
+## JWT字段说明
+
+| 缩写          | 全称                                     | 中文解释                                                           |
+| ----------- | -------------------------------------- | -------------------------------------------------------------- |
+| `iss`       | Issuer 签发机构                            | 表示该 JWT 的签发主体（例如认证服务器的标识）。                                     |
+| `sub`       | Subject 主题                             | 表示该 JWT 所面向的用户（通常是用户 ID 或用户名）。                                 |
+| `aud`       | Audience 受众                            | 表示该 JWT 的接收方（可以是单个字符串或数组，指定哪些系统可以使用此 JWT）。                     |
+| `exp`       | Expiration Time 过期时间                   | 表示该 JWT 的过期时间，必须大于签发时间。                                        |
+| `nbf`       | Not Before 生效时间                        | 表示该 JWT 的生效时间，在此时间之前不会被接受。                                     |
+| `iat`       | Issued At 签发时间                         | 表示 JWT 的签发时间。                                                  |
+| `jti`       | JWT ID 唯一标识                            | 表示 JWT 的唯一标识，用于防止重放攻击（可存数据库做黑名单机制）。                            |
+| 以下是扩展字段     |                                        |                                                                |
+| `act`       | Actor 代理者                              | 来自 RFC 8693，表示“代表者”（代理执行者）的身份，用于代理/委托场景。                       |
+| `cnf`       | Confirmation 确认信息                      | 来自 RFC 7800，用于绑定密钥或其他确认信息（例如绑定到特定设备的公钥）。                       |
+| `auth_time` | Authentication Time 认证时间               | 来自 OpenID Connect，表示用户完成认证的时间戳。                                |
+| `nonce`     | Nonce 随机数                              | 来自 OpenID Connect，用于防止重放攻击，由客户端生成并由服务端返回，确保请求唯一性。              |
+| `azp`       | Authorized Party 授权方                   | 来自 OpenID Connect，表示最终被授权使用 ID Token 的客户端（通常和 `aud` 配合使用）。     |
+| `at_hash`   | Access Token Hash                      | 来自 OpenID Connect，表示 Access Token 的哈希值，用于验证 Access Token 的完整性。 |
+| `c_hash`    | Code Hash                              | 来自 OpenID Connect，表示授权码的哈希值，用于混合流（Hybrid Flow）校验授权码未被篡改。       |
+| `sid`       | Session ID 会话 ID                       | 来自 OpenID Connect，表示用户的会话标识，用于登出管理。                            |
+| `acr`       | Authentication Context Class Reference | 来自 OpenID Connect，表示认证等级（如多因素认证、强认证等级）。                        |
+| `amr`       | Authentication Methods References      | 来自 OpenID Connect，表示认证方式列表（如密码、指纹、人脸识别等）。                      |
 
 
 
