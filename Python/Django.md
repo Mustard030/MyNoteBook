@@ -2324,6 +2324,11 @@ def view(request):
 ### CBV
 
 APIView -> GenericAPIView（配合Mixins） -> 视图集（ViewSet, GenericViewSet, ModelViewSet） -> 自定义动作（@action）
+一句话区别：
+- Generic = 带 ORM 通用能力（提供了queryset和serializer用于指定模型和序列化器）
+- ViewSet = 使用Restful语义的http动作，并使用router注册url
+- Model = 自动 CRUD 能力
+
 
 ##### APIView
 

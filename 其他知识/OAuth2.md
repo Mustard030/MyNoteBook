@@ -51,6 +51,201 @@ sequenceDiagram
 4. 同样的，服务2拿到令牌之后先通过授权服务器拿到token信息，确认token有效之后将登录信息保存到服务2的session中。再将token返回给用户，用户此后将直接使用token访问服务2。
 
 
+# 抽象实现
+
+一个完整的OAuth2登录流程（使用授权码模式）需要包含三个角色，应用前端、应用后端、授权服务器
+
+前端需要准备：
+1. 一个登录页
+2. 一个后端回调页（用于授权服务器带着`code`回调用）
+
+授权服务器的标准端点如下：
+1. `/oauth/authorize`：授权端点（Authorization Endpoint）一个页面，非json接口，它用于检查用户是否登录，展示授权同意页面，用户同意或者拒绝授权
+2. `/oauth/token`：令牌端点（Token Endpoint）
+
+
+应用后端需要准备：
+1. `/o/login`：
+2. `/o/auth`：
+3. `/o/refresh`：
+4. `/o/logout`：
+5. `/o/auth/link?p=`：用于获取对应平台的授权服务器地址
+
+
+
+## 完整流程
+
+### 1、获取授权地址
+用户点击前端页面上的第三方登录图标，向后端发送`/o/auth/link?p=`用于获取授权服务器的授权地址，后端接收到请求后，将自身配置中的`client_id`和`redirect_uri`，以及需求的`scope`和用于标识的`state`拼接授权服务器的地址并直接重定向到这个地址
+```http
+GET https://auth-server.com/oauth/authorize?
+    response_type=code
+    &client_id=CLIENT_ID
+    &redirect_uri=https://frontend.com/callback
+    &scope=profile+email
+    &state=xyz123
+```
+
+参数说明：
+
+| 参数                      | 作用                                                 |
+| ----------------------- | -------------------------------------------------- |
+| response_type=code      | 告诉授权服务器使用授权码模式，基本都是用code                           |
+| client_id               | 注册的应用id                                            |
+| redirect_uri            | 认证成功后的前端回调地址                                       |
+| scope                   | 要请求资源服务器的权限，如果 scope 包括未授权的项，要拒绝或裁剪（一般拒绝并返回 error） |
+| state                   | 防止 CSRF、会原样返回，必须提供                                 |
+| response_mode=form_post | 不使用 `302` 重定向，而是返回一个自动提交的HTML Form                 |
+| code_challenge          | PKCE流程中的挑战值                                        |
+| code_challenge_method   | PKCE流程中的挑战值加密方法                                    |
+
+### 2、授权服务器校验登录和权限
+
+#### 接收请求并参数校验
+授权服务器接收到客户端的请求时，先向自己的后端发送这些附带的参数信息，例如：检查 `client_id` 是否存在、`redirect_uri` 是否精确匹配已登记、`response_type` 合法、`scope` 在允许范围内、`PKCE` 参数合法等。
+
+授权服务器的数据库可能需要保存如下信息：
+
+`oauth_client`（客户端注册）：
+
+| 列名(\*代表必须)                 | 含义                                             |
+| -------------------------- | ---------------------------------------------- |
+| client_id*                 | 应用端id                                          |
+| client_secert*             | 应用端密钥                                          |
+| redirect_uris*             | 用于后续重定向校验(可以多值，严密匹配)                           |
+| grant_types*               | authorization_code, refresh_token, ...         |
+| scopes_allowed             | 允许的scope范围                                     |
+| client_type                | 应用端类型(confidential/public)                     |
+| require_pkce(bool)         |                                                |
+| token_endpoint_auth_method | (client_secret_basic / none / private_key_jwt) |
+| client_name                | 应用端名称                                          |
+| client_pic                 | 应用端图标                                          |
+| created_at, updated_at     |                                                |
+
+`authorization_code`
+
+| 列名(\*代表必须)                    | 含义                |
+| ----------------------------- | ----------------- |
+| code*                         | (PK, 随机字符串)       |
+| client_id*                    |                   |
+| user_id*                      |                   |
+| redirect_uri*                 | 当前重定向用的uri        |
+| scopes*                       | 申请的scope(文本/JSON) |
+| created_at*                   |                   |
+| expires_at*                   |                   |
+| code_challenge                | PKCE              |
+| code_challenge_method         | PKCE              |
+| nonce (optional)              | PKCE              |
+| used (boolean) 或 consumed_at* |                   |
+
+`consent`（用户已同意记录）
+
+| 列名(\*代表必须)                | 含义  |
+| ------------------------- | --- |
+| id*                       |     |
+| user_id*                  |     |
+| client_id*                |     |
+| scopes*                   |     |
+| created_at*               |     |
+| expires_at 或 valid_until* |     |
+| remember (bool)*          |     |
+
+`oauth_token`（access/refresh token 记录）
+
+| 列名(\*代表必须)            | 含义                  |
+| --------------------- | ------------------- |
+| access_token          | (hashed 或 token id) |
+| refresh_token         | (hashed)            |
+| client_id             |                     |
+| user_id               |                     |
+| scopes                |                     |
+| issued_at, expires_at | 何时颁发或何时过期           |
+| revoked_at            | 何时撤销                |
+
+
+
+> 为什么需要检查`redirect_uri`？因为如果不检查，我将这个重定向地址换成恶意地址，就能拿到授权服务器给的授权码`code`，这样就能直接拿这个`code`去换token了，所以要检查这个`redirect_uri`是否跟这个应用注册时登记的`redirect_uri`相同。
+> 注意：如果 `redirect_uri` 无法确定或不可信，应在授权服务器端直接返回 HTML 错误页面（不要重定向）。
+
+#### 登录检查（用户身份）
+然后检查当前的用户登录状态，若未登录则返回或者跳转登录页，并在登录成功后回到`authorize`流程（或直接跳转到同意页）。
+检查登录或者刷新登录状态尽量使用session保存，如果客户端传 `prompt=login`：强制用户重新认证（尽管已有 session）
+
+#### 同意页（Consent）
+
+- 判断用户是否已对该 client + scopes 授过权（“记住此决定”）。
+    - 若已记住且仍在有效期内，跳过同意页并直接发放授权码。
+    - 否则展示 consent 页面，列出请求的 scope 与资源访问范围，显示“允许 / 拒绝”按钮。
+- 提供“记住我的选择”的复选框（需在 DB 保存 consent 记录并有过期策略）。
+
+（可选）：保存发放的授权码、发起请求的 client、用户、scope、IP、时间等并做好日志记录。
+
+#### 用户同意后的动作（生成授权码）
+若用户同意：
+1. 生成 `authorization_code`：
+    - 随机且不可预测（例如 32+ bytes，使用 CSPRNG，base64url 编码）。
+    - 含服务器端关联数据（user_id, client_id, redirect_uri, scopes, created_at, expires_at, code_challenge, code_challenge_method, nonce(optional)）。
+    - 设置短失效时间（例如 1–10 分钟，常见 5 分钟）。
+    - **一次性使用**：消费后立即删除或标记为已使用。
+2. 将 code 保存到持久层（或缓存）并记录审计日志。
+3. 重定向回客户端：
+    `HTTP/1.1 302 Found Location: https://client/callback?code=AUTH_CODE&state=xyz`
+4. 如果 `response_mode=form_post`（可选）或客户端要求 POST 返回，则返回一个 HTML 表单并自动提交（用于防止 URL 泄露）。
+
+如果使用`form_post`，意味着授权服务器不使用 `302` 重定向，而是返回一个自动提交的 HTML `<form>`，code 和 state **放在 POST body 中**，Content-Type: `application/x-www-form-urlencoded`，仍然跳转到 `redirect_uri`，但是此时记录的 `redirect_uri`通常是后端的地址，然后再使用`code`换取授权码后直接返回登录状态给前端
+比如：
+```html
+<html>
+<body onload="document.forms[0].submit()">
+  <form method="post" action="https://client.com/callback">
+    <input type="hidden" name="code" value="AUTH_CODE"/>
+    <input type="hidden" name="state" value="xyz"/>
+  </form>
+</body>
+</html>
+```
+或授权失败：
+```html
+<html>
+<body onload="document.forms[0].submit()">
+  <form method="post" action="https://client.com/callback">
+    <input type="hidden" name="error" value="access_denied"/>
+    <input type="hidden" name="state" value="xyz"/>
+  </form>
+</body>
+</html>
+```
+
+
+若用户拒绝：
+- 重定向回 `redirect_uri?error=access_denied&state=...`
+
+### 3、换取token
+现在授权服务器跳转到前端的`callback`页面，或者在`response_mode=form_post`流程中向后端`callback`发起了请求，下面就要通过`code`换取token。
+
+
+
+
+# PKCE（Proof Key for Code Exchange）
+**PKCE** 是 OAuth 2.0 Authorization Code Flow 的 **安全增强机制**，特别针对 **公共客户端（Public Client）**，比如移动 App、SPA 前端。
+
+背景：
+- 普通 Authorization Code Flow 需要 **客户端 secret**
+- 前端或移动端无法安全存储 secret → 攻击者可能截获 code 然后自己去换 token
+
+### PKCE 解决方案
+1. 客户端生成 **code_verifier**（随机字符串）并放在本地
+2. 通过 hash 生成 **code_challenge**，随授权请求发送给授权服务器
+3. 授权服务器返回 code
+4. 客户端换 token 时，需要提供 **code_verifier**
+5. 授权服务器验证 code_verifier 是否匹配 code_challenge → 只有持有 code_verifier 的客户端能换 token
+    
+> 🔑 目的：防止 code 被中间人攻击（MitM）或被拦截后被滥用
+
+
+
+
+
 
 
 # JWT
@@ -80,7 +275,7 @@ sequenceDiagram
 
 
 
-# 授权服务器搭建
+# 授权服务器搭建(Java)
 
 **导入Redis依赖**
 父项目中导入
