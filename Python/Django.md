@@ -2325,9 +2325,9 @@ def view(request):
 
 APIView -> GenericAPIView（配合Mixins） -> 视图集（ViewSet, GenericViewSet, ModelViewSet） -> 自定义动作（@action）
 一句话区别：
-- Generic = 带 ORM 通用能力（提供了queryset和serializer用于指定模型和序列化器）
-- ViewSet = 使用Restful语义的http动作，并使用router注册url
-- Model = 自动 CRUD 能力
+- Generic = 带 ORM 通用能力（提供了queryset和serializer用于指定模型和序列化器），通常和某个数据库表有关系但不是作为资源看待
+- ViewSet = 使用Restful语义的http动作，并使用router注册url，通常用于某个明确的资源，但跟数据库表没有关系
+- Model = 自动 CRUD 能力，既和表有关系，也和资源有关系，也就是把一个表看成一种资源
 
 
 ##### APIView
