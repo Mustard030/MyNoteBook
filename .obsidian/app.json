@@ -1,0 +1,10 @@
+{
+  "spellcheck": false,
+  "showLineNumber": true,
+  "readableLineLength": false,
+  "strictLineBreaks": true,
+  "newLinkFormat": "relative",
+  "propertiesInDocument": "visible",
+  "focusNewTab": false,
+  "useMarkdownLinks": true
+}
