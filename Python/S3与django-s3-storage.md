@@ -98,7 +98,7 @@ AWS_S3_FILE_OVERWRITE = True
 
 
 ## 多套配置
-如果需要设置多套不同的配置，则可以使用`s3_settings_suffix`，并实例化多个`Storage`例如：
+在Django ＜ 4.2时如果需要设置多套不同的配置，则可以使用`s3_settings_suffix`，并实例化多个`Storage`例如：
 ```python
 from django_s3_storage.storage import S3Storage
 
@@ -157,6 +157,92 @@ class AppCache(models.Model):
     # 使用 CacheStorage 类
     data = models.FileField(storage=CacheStorage())
 ```
+
+但是在Django ≥ 4.2之后，更建议使用`STORAGES`字典进行配置，Django 4.2 最主要的配置变化是引入了 `STORAGES` 字典，取代了 `DEFAULT_FILE_STORAGE` 和 `STATICFILES_STORAGE` 两个字符串设置。
+配置文件如下（这里展示的是django-storage库，django-s3-storage不支持4.2版本）
+
+```python
+# settings.py
+
+STORAGES = {
+    # 默认文件存储（用于所有未明确指定 storage 的 FileField/ImageField）
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        "OPTIONS": {
+            # 在这里可以设置特定于默认存储的参数
+            "bucket_name": "my-app-media-bucket",
+            # ... 其他选项 ...
+        }
+    },
+    # 静态文件存储（通常也使用 django-storages）
+    "staticfiles": {
+        "BACKEND": "storages.backends.s3boto3.S3StaticStorage", 
+    },
+    
+    # 定义一个自定义存储 'backups'
+    "backups": {
+        # 假设你使用的是 django-storages 的 S3 后端
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage", 
+        "OPTIONS": {
+            # 这是一个完全独立的配置，比如不同的 S3 桶
+            "bucket_name": "my-offsite-backup-bucket",
+            "location": "archive/",
+            "querystring_auth": True, # 确保私有访问
+            "default_acl": "private",
+        },
+    },
+}
+
+# 仍然需要设置全局认证信息 (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY 等)
+```
+
+```python
+# models.py
+
+from django.db import models
+from django.conf import settings
+from django.utils.module_loading import import_string
+from django.core.exceptions import ImproperlyConfigured
+
+# --- 存储实例化函数 ---
+def get_custom_storage(storage_key):
+    """从 settings.STORAGES 字典中加载并实例化指定的存储后端。"""
+    
+    storage_config = settings.STORAGES.get(storage_key)
+    if not storage_config:
+        raise ImproperlyConfigured(f"Storage '{storage_key}' not found in settings.STORAGES.")
+
+    # 1. 导入存储类 (将字符串路径解析为类)
+    StorageClass = import_string(storage_config['BACKEND'])
+    
+    # 2. 获取 OPTIONS 参数 (作为 kwargs 传入 __init__)
+    options = storage_config.get('OPTIONS', {})
+    
+    # 3. 实例化存储对象
+    return StorageClass(**options)
+
+# 实例化自定义存储对象
+BACKUP_STORAGE = get_custom_storage('backups')
+
+
+# --- 模型定义 ---
+class DatabaseBackup(models.Model):
+    date = models.DateTimeField(auto_now_add=True)
+    
+    pic = models.FileField(
+        upload_to='avatar/', 
+    )  # <-- 不指定storage时会使用STORAGES的"default"配置
+    
+    # 将实例化后的存储对象赋值给 storage 参数
+    backup_file = models.FileField(
+        upload_to='daily_dumps/', 
+        storage=BACKUP_STORAGE # <-- 这里指定了另一套配置
+    )
+
+    class Meta:
+        verbose_name = "数据库备份"
+```
+
 
 ## 访问文件
 `S3Storage` 的 `url` 方法的目的是根据给定的文件路径 (`name`) 生成一个客户端可以用来访问该 S3 文件的 URL。它主要根据两个核心配置项的行为决定最终 URL 的形式：`AWS_S3_PUBLIC_URL` 和 `AWS_S3_BUCKET_AUTH`。

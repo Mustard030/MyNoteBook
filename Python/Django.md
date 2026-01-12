@@ -3866,6 +3866,8 @@ class UserSerializer(serializers.Serializer):
 
 ```
 
+当source使用点语法查找关联对象属性时，具有内置的容错机制。比如上述例子中的`author`为`None`时，会自动返回`None`，而不是抛出`AttributeError`。
+
 **字典/列表/方法**
 
 - 字典：`source='dict_key'`
