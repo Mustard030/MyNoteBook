@@ -1,0 +1,23 @@
+{
+  "pluginList": [
+    "UNLINEARITY/Obsidian-CodeSpace"
+  ],
+  "pluginSubListFrozenVersion": [
+    {
+      "repo": "UNLINEARITY/Obsidian-CodeSpace",
+      "version": "latest"
+    }
+  ],
+  "themesList": [],
+  "updateAtStartup": true,
+  "updateThemesAtStartup": true,
+  "enableAfterInstall": true,
+  "loggingEnabled": false,
+  "loggingPath": "BRAT-log",
+  "loggingVerboseEnabled": false,
+  "debuggingMode": false,
+  "notificationsEnabled": true,
+  "personalAccessToken": "",
+  "selectLatestPluginVersionByDefault": true,
+  "allowIncompatiblePlugins": false
+}
