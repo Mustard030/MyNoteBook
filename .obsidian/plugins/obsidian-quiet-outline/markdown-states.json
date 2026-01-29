@@ -1,16 +1,34 @@
 {
   "Python/Pydantic.md": {
-    "scroll": 0,
+    "scroll": 47.082362728785355,
     "cursor": {
       "from": {
-        "line": 23,
-        "ch": 51
+        "line": 64,
+        "ch": 0
       },
       "to": {
-        "line": 23,
-        "ch": 51
+        "line": 64,
+        "ch": 0
       }
     },
     "expandedKeys": []
+  },
+  "Python/Django.md": {
+    "scroll": 2897.055837563452,
+    "cursor": {
+      "from": {
+        "line": 0,
+        "ch": 0
+      },
+      "to": {
+        "line": 0,
+        "ch": 0
+      }
+    },
+    "expandedKeys": [
+      "item-1-88",
+      "item-2-110",
+      "item-3-111"
+    ]
   }
 }

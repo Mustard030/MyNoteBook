@@ -8,7 +8,12 @@
       "version": "latest"
     }
   ],
-  "themesList": [],
+  "themesList": [
+    {
+      "repo": "sumruler/obsidian-theme-phycat",
+      "lastUpdate": "29855473"
+    }
+  ],
   "updateAtStartup": true,
   "updateThemesAtStartup": true,
   "enableAfterInstall": true,

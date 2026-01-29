@@ -1,3 +1,6 @@
 {
-  "phycat-theme-settings@@light-color-scheme": "theme-light-sky"
+  "phycat-theme-settings@@light-color-scheme": "theme-light-sky",
+  "phycat-colors@@light-color-scheme": "theme-light-sky",
+  "phycat-layout@@layout-style": "layout-cards",
+  "phycat-spacing@@code-line-height": 1.4
 }
