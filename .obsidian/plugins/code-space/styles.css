@@ -38,21 +38,23 @@ body .code-space-container .cm-activeLine::selection {
 
 .code-space-container .cm-editor {
     height: 100% !important;
-    font-family: var(--font-monospace, 'Fira Code', 'JetBrains Mono', 'Cascadia Code', monospace);
-    font-feature-settings: "liga" 0, "calt" 0;
+    font-family: var(--font-monospace), 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Source Code Pro', Consolas, 'Courier New', monospace;
+    font-feature-settings: "liga" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
 }
 
 /* 优化编辑器行号 */
 .code-space-container .cm-gutters {
-    background-color: transparent !important;
+    background-color: var(--background-primary) !important;
     color: var(--text-muted);
     border-right: 1px solid var(--background-modifier-border-hover);
-    min-width: 48px;
-    padding-right: 8px;
+    min-width: 32px;
+    padding-right: 0;
 }
 
 .code-space-container .cm-lineNumbers .cm-gutterElement {
-    padding: 0 4px 0 12px;
+    padding: 0 8px !important;
+    background-color: var(--background-primary) !important;
     min-width: 24px;
     text-align: right;
     font-variant-numeric: tabular-nums;
@@ -611,19 +613,22 @@ body .code-space-container .cm-activeLine::selection {
 }
 
 .code-embed-filename {
-	font-weight: 600;
-	color: var(--text-normal);
-	font-family: var(--font-monospace, 'Fira Code', 'JetBrains Mono', monospace);
+    font-weight: 600;
+    color: var(--text-normal);
+    font-family: var(--font-monospace), 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Source Code Pro', Consolas, 'Courier New', monospace;
 }
 
 .code-embed-linerange {
-	color: var(--text-muted);
-	font-size: 11px;
+    color: var(--text-muted);
+    font-size: 11px;
 }
 
 .code-embed-editor {
-	background-color: var(--background-primary);
-	text-align: left; /* 确保左对齐 */
+    background-color: var(--background-primary);
+    text-align: left; /* 确保左对齐 */
+    font-family: var(--font-monospace), 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Source Code Pro', Consolas, 'Courier New', monospace;
+    font-feature-settings: "liga" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
 }
 
 .code-embed-editor.code-embed-scrollable {
