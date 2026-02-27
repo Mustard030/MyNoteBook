@@ -14,7 +14,7 @@
     "expandedKeys": []
   },
   "Python/Django.md": {
-    "scroll": 2897.055837563452,
+    "scroll": 2895.9211788896505,
     "cursor": {
       "from": {
         "line": 0,
@@ -30,5 +30,19 @@
       "item-2-110",
       "item-3-111"
     ]
+  },
+  "未命名.md": {
+    "scroll": 0,
+    "cursor": {
+      "from": {
+        "line": 0,
+        "ch": 0
+      },
+      "to": {
+        "line": 0,
+        "ch": 0
+      }
+    },
+    "expandedKeys": []
   }
 }
