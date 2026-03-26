@@ -57,20 +57,35 @@
     "expandedKeys": []
   },
   "其他知识/设计模式.md": {
-    "scroll": 4.994228919525489,
+    "scroll": 72.85923623445827,
     "cursor": {
       "from": {
-        "line": 0,
+        "line": 57,
         "ch": 0
       },
       "to": {
-        "line": 0,
+        "line": 57,
         "ch": 0
       }
     },
     "expandedKeys": [
       "item-1-0",
-      "item-1-6"
+      "item-1-6",
+      "item-1-14"
     ]
+  },
+  "其他知识/Latex.md": {
+    "scroll": 0,
+    "cursor": {
+      "from": {
+        "line": 1,
+        "ch": 0
+      },
+      "to": {
+        "line": 1,
+        "ch": 0
+      }
+    },
+    "expandedKeys": []
   }
 }
