@@ -1551,7 +1551,12 @@ with transaction.atomic():
     User.objects.create(name="Tom")
 ```
 
-因此要么直接回滚，不能catch；要么try内部再包一个事务（保存点），这样内层回滚，wai
+因此要么直接回滚，不能catch；要么try内部再包一个事务（保存点），这样内层回滚，外层还能继续执行。
+
+#### rollback
+Django 一般自动处理回滚，但也可以手动`transaction.set_rollback(True)`，标记事务需要回滚。
+
+
 
 ### 读写分离
 
