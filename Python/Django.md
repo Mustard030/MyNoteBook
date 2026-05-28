@@ -1514,8 +1514,12 @@ def create_order():
 ```
 
 支持的参数有三个：`def atomic(using=None, savepoint=True, durable=False)`
+
 using：详见[读写分离](#读写分离)
 
+savepoint：详见[SavePoint](#SavePoint)
+
+durable：仅PostgreSQL，保证数据落盘，通常用于金融场景
 
 #### SavePoint
 Django支持嵌套事务（SavePoint）
@@ -1595,6 +1599,26 @@ with transaction.atomic():
 `select_for_update(nowait=True)`：如果被锁，则立即报错，不等待。
 
 `select_for_update(skip_locked=True)`：跳过已锁数据，通常用于任务队列。
+
+#### ATOMIC_REQUESTS
+settings配置项。标记为每个请求自动包事务。（不推荐）
+```python
+DATABASES = {
+    "default": {
+        ...
+        "ATOMIC_REQUESTS": True,
+    }
+}
+```
+
+#### non_atomic_requests
+关闭某个 view 的事务：
+```python
+@transaction.non_atomic_requests
+def view(request):
+    ...
+```
+
 
 ### 读写分离
 
