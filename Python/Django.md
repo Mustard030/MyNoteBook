@@ -3133,10 +3133,10 @@ def save(self, **kwargs):
 重写时务必给`self.instance`赋值！否则后面`.data`时会拿不到数据。
 
 #### `.create(validated_data)`
-用于创建新对象。`ModelSerializer` 会自动实现。普通序列化器则需要自己重写这个方法。内部直接使用`self.validated_data`的数据进行保存。
+用于创建新对象。`ModelSerializer` 会自动实现。普通序列化器则需要自己重写这个方法。内部直接使用`self.validated_data`的数据进行创建对象。创建后务必返回对象，后续会赋值给`instance`。
 
 #### `.update(instance, validated_data)`
-用于更新已有对象。内部直接使用`self.validated_data`的数据进行更新。
+用于更新已有对象。内部直接使用`self.validated_data`的数据进行更新对象。更新后务必返回对象，后续会赋值给`instance`。
 
 #### `.fields`
 保存序列化器定义的字段集合
