@@ -2927,14 +2927,25 @@ for field in self.fields.values():
 
 
 #### `.save(**kwargs)`
-将已验证的数据保存（仅 `ModelSerializer` 或你重写了 `create()` 时可用）
-
+（仅 `ModelSerializer` 或你重写了 `create()` 时可用）
+合并`validated_data`和传入的所有参数，并根据是否存在`self.instance`路由到更新或者创建中，将结果赋值回`self.instance`。因此本方法的核心目的是处理`self.instance`。
 内部逻辑：
 ```python
-if self.instance is None:
-    return self.create(validated_data)
-else:
-    return self.update(self.instance, validated_data)
+def save(self, **kwargs):
+	validated_data = {**self.validated_data, **kwargs}  
+	  
+	if self.instance is not None:  
+	    self.instance = self.update(self.instance, validated_data)  
+	    assert self.instance is not None, (  
+	        '`update()` did not return an object instance.'  
+	    )  
+	else:  
+	    self.instance = self.create(validated_data)  
+	    assert self.instance is not None, (  
+	        '`create()` did not return an object instance.'  
+	    )  
+	  
+	return self.instance
 ```
 
 
