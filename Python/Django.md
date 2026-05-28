@@ -1572,7 +1572,20 @@ with transaction.atomic():
 	)
 ```
 
-典型场景：MQ、Celery、Redis缓存、发邮件、发短信、WebHook等
+典型场景：MQ、Celery、Redis缓存、发邮件、发短信、WebHook等。
+
+#### select_for_update
+行级锁，其他事务必须等待。
+
+示例：
+```python
+with transaction.atomic():
+
+    product = Product.objects.select_for_update().get(id=1)
+
+    product.stock -= 1
+    product.save()
+```
 
 ### 读写分离
 
