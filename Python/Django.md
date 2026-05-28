@@ -3005,6 +3005,42 @@ serializer.instance
 # <User>
 ```
 
+常见用法：
+更新时排除自己：
+```python
+def validate_email(self, value):
+
+    qs = User.objects.filter(email=value)
+
+    if self.instance:
+        qs = qs.exclude(id=self.instance.id)
+
+    if qs.exists():
+        raise ValidationError("邮箱已存在")
+
+    return value
+```
+
+`instance`不一定是一个Model对象，也有可能是任意对象。
+
+`many=True`时 `instance` 是QuerySet或者list。实际会变成：
+```python
+ListSerializer(  
+	child=UserSerializer()  
+)
+```
+
+迭代时`child.instance`才等于单个对象
+
+`SerializerMethodField` 中 `instance`是`obj`，同样的，`many=True`时，迭代时`child.instance`才等于单个对象
+```python
+class UserSerializer(serializers.Serializer):
+    full_name = serializers.SerializerMethodField()
+
+    def get_full_name(self, obj):  # obj == instance
+        return obj.first_name + obj.last_name
+```
+
 #### `.data`
 这是一个`@property`，他与创建Serializer时传入的data参数不同。返回已验证或序列化后的要输出给前端的数据，在此时已经完全是一个可 JSON 化数据（字符串、数字、列表、字典等），是最终阶段的输出。在这个阶段就会调用`self.to_representation(self.instance)`，这里面又会调用`field.to_representation(attribute)`从而将每个字段转为可输出的JSON数据。如果是通过`Serializer`的`instance`参数传入，则可以直接调用。
 
