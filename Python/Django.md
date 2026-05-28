@@ -1556,6 +1556,11 @@ with transaction.atomic():
 #### rollback
 Django 一般自动处理回滚，但也可以手动`transaction.set_rollback(True)`，标记事务需要回滚。
 
+查看是否已标记回滚：`transaction.get_rollback()`
+
+关闭自动提交：`transaction.set_autocommit(False)`，然后手动控制`transaction.commit()`或者`transaction.rollback()`
+
+
 
 
 ### 读写分离
