@@ -2990,8 +2990,20 @@ serializer.data
 
 ### 常用字段和方法
 #### `.instance`
-本质上是当前 serializer 绑定的“已有对象”，它决定了[`.save(**kwargs)`](#`.save(**kwargs)`) 方法是调用[create](#`.create(validated_data)`)还是[update](#`.update(instance,%20validated_data)`)
-
+本质上是当前 serializer 绑定的“已有对象”，它决定了[save](#`.save(**kwargs)`) 方法是调用[create](#`.create(validated_data)`)还是[update](#`.update(instance,%20validated_data)`)
+```python
+serializer = UserSerializer(data=data)  
+  
+serializer.instance  
+# None  
+  
+serializer.is_valid()  
+  
+user = serializer.save()  
+  
+serializer.instance  
+# <User>
+```
 
 #### `.data`
 这是一个`@property`，他与创建Serializer时传入的data参数不同。返回已验证或序列化后的要输出给前端的数据，在此时已经完全是一个可 JSON 化数据（字符串、数字、列表、字典等），是最终阶段的输出。在这个阶段就会调用`.to_representation()`，这里面又会调用`field.to_representation(attribute)`从而将每个字段转为可输出的JSON数据。如果是通过`Serializer`的`instance`参数传入，则可以直接调用。
