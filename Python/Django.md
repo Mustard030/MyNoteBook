@@ -3006,7 +3006,7 @@ serializer.instance
 ```
 
 #### `.data`
-这是一个`@property`，他与创建Serializer时传入的data参数不同。返回已验证或序列化后的要输出给前端的数据，在此时已经完全是一个可 JSON 化数据（字符串、数字、列表、字典等），是最终阶段的输出。在这个阶段就会调用`.to_representation()`，这里面又会调用`field.to_representation(attribute)`从而将每个字段转为可输出的JSON数据。如果是通过`Serializer`的`instance`参数传入，则可以直接调用。
+这是一个`@property`，他与创建Serializer时传入的data参数不同。返回已验证或序列化后的要输出给前端的数据，在此时已经完全是一个可 JSON 化数据（字符串、数字、列表、字典等），是最终阶段的输出。在这个阶段就会调用`self.to_representation(self.instance)`，这里面又会调用`field.to_representation(attribute)`从而将每个字段转为可输出的JSON数据。如果是通过`Serializer`的`instance`参数传入，则可以直接调用。
 
 #### `.initial_data`
 创建序列化器时传入的 **原始输入数据**（通常是前端提交的 JSON）。
