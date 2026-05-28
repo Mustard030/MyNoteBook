@@ -1547,9 +1547,11 @@ with transaction.atomic():
     except IntegrityError:
         pass
 	
-	# 
+	# 会报TransactionManagementError
     User.objects.create(name="Tom")
 ```
+
+因此要么直接回滚，不能catch；要么try内部再包一个事务（保存点），这样内层回滚，wai
 
 ### 读写分离
 
