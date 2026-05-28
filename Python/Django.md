@@ -1512,6 +1512,8 @@ def create_order():
 ...
 ```
 
+
+
 #### SavePoint
 Django支持嵌套事务（SavePoint）
 ```python
@@ -1586,6 +1588,10 @@ with transaction.atomic():
     product.stock -= 1
     product.save()
 ```
+
+`select_for_update(nowait=True)`：如果被锁，则立即报错，不等待。
+
+`select_for_update(skip_locked=True)`：跳过已锁数据，通常用于任务队列。
 
 ### 读写分离
 
