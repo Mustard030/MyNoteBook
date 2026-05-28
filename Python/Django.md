@@ -3126,6 +3126,7 @@ def save(self, **kwargs):
 	return self.instance
 ```
 
+重写时务必给`self.instance`赋值！否则后面`.data`时会拿不到数据。
 
 #### `.create(validated_data)`
 用于创建新对象。`ModelSerializer` 会自动实现。普通序列化器则需要自己重写这个方法。内部直接使用`self.validated_data`的数据进行保存。
