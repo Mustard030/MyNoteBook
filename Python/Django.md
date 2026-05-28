@@ -2949,6 +2949,10 @@ class BaseSerializer(Field):
 		super().__init__(**kwargs)
 ```
 
+典型用法：
+1. 纯序列化：`Serializer(instance=obj)`
+2. 创建：`Serializer(data=data)`
+3. 更新：`Serializer(instance=obj, data=data)`
 `instance`用来**序列化**（Python对象 → JSON）
 `data`用来**反序列化**（把 JSON → Python 对象，并做校验/保存）
 两个参数在 `Serializer` 和 `ModelSerializer` 里的含义、取值、使用阶段完全一样；区别只在于 `ModelSerializer` 的 `instance` 必须是 **Django 模型实例**，而普通 `Serializer` 的 `instance` 可以是任意 Python 对象（dict、自定义类都行），对于普通 `Serializer`，`.data` 会按照字段定义，通过 `instance[field]`（如果是 dict）或 `getattr(instance, field)`（如果是对象）提取值
