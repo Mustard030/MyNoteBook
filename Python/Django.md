@@ -1562,7 +1562,17 @@ Django 一般自动处理回滚，但也可以手动`transaction.set_rollback(Tr
 
 #### on_commit()
 只有事务真正提交后执行。
-例如：`transaction.on_commit(lambda: send_sms())`
+例如：
+```python
+with transaction.atomic():  
+	order.save()  
+	  
+	transaction.on_commit(  
+		lambda: send_sms()  
+	)
+```
+
+典型场景：MQ、Celery、Redis缓存、发邮件、发短信、WebHook等
 
 ### 读写分离
 
