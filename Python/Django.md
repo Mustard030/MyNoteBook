@@ -1492,6 +1492,26 @@ class ProtectedView(View):
 
 
 ## 数据库操作
+### 事务
+事务核心包为
+```python
+from django.db import transaction
+```
+
+而最核心的API为`atomic()`，用法有两种
+```python
+from django.db import transaction
+
+# 使用声明式事务，手动控制事务控制范围
+with transaction.atomic():
+	...
+	
+@transaction.atomic  
+def create_order():  
+...
+```
+
+在事务范围内的所有数据库操作属于同一个事务
 
 ### 读写分离
 
