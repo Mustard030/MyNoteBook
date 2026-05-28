@@ -1505,13 +1505,34 @@ from django.db import transaction
 # 使用声明式事务，手动控制事务控制范围
 with transaction.atomic():
 	...
-	
+
+# 包裹整个方法
 @transaction.atomic  
 def create_order():  
 ...
 ```
 
-在事务范围内的所有数据库操作属于同一个事务
+Django支持嵌套事务（SavePoint）
+```python
+# 外层事务是真事务
+with transaction.atomic():
+    create_order()
+
+    try:
+	    # 内层事务是 savepoint
+        with transaction.atomic():
+            create_coupon()
+    except:
+        pass
+        
+# 可以禁用保存点
+with transaction.atomic(savepoint=False):  
+	...
+```
+
+SavePoint指数据库不会真的开启一个事务，而是将其变为保存点，当内层事务抛出异常回滚时，只会回滚到保存点，不会影响外层事务。
+
+禁用保存点可以提高性能，但会直接污染整个事务，
 
 ### 读写分离
 
