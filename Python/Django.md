@@ -2990,7 +2990,7 @@ serializer.data
 
 ### 常用字段和方法
 #### `.instance`
-他有几个作用，指代当前序列化器已有的对象
+本质上是当前 serializer 绑定的“已有对象”，它决定了[`.save(**kwargs)`](#`.save(**kwargs)`) 方法是
 
 
 #### `.data`
