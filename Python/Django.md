@@ -1514,6 +1514,7 @@ def create_order():
 ```
 
 支持的参数有三个：`def atomic(using=None, savepoint=True, durable=False)`
+using：详见[#读写分离|读写分离]
 
 
 #### SavePoint
