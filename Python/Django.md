@@ -2862,10 +2862,12 @@ serializer.data
 反序列化多个对象的默认行为是支持创建多个对象，但不支持多个对象更新。有关如何支持或自定义这两种情况的更多信息，请参阅下面的 [ListSerializer](#ListSerializer) 文档。
 
 ### 常用字段和方法
+#### `.instance`
+他有几个作用，指代当前序列化器已有的对象
+
 
 #### `.data`
-这是一个`@property`，他与创建Serializer时传入的data参数不完全相同，
-返回已验证或序列化后的要输出给前端的数据，在此时已经完全是一个可 JSON 化数据（字符串、数字、列表、字典等），是最终阶段的输出。在这个阶段就会调用`.to_representation()`，这里面又会调用`field.to_representation(attribute)`从而将每个字段转为可输出的JSON数据。如果是通过`Serializer`的`instance`参数传入，则可以直接调用。
+这是一个`@property`，他与创建Serializer时传入的data参数不同。返回已验证或序列化后的要输出给前端的数据，在此时已经完全是一个可 JSON 化数据（字符串、数字、列表、字典等），是最终阶段的输出。在这个阶段就会调用`.to_representation()`，这里面又会调用`field.to_representation(attribute)`从而将每个字段转为可输出的JSON数据。如果是通过`Serializer`的`instance`参数传入，则可以直接调用。
 
 #### `.initial_data`
 创建序列化器时传入的 **原始输入数据**（通常是前端提交的 JSON）。
