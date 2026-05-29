@@ -3146,7 +3146,7 @@ print(serializer.fields)
 ```
 
 #### `.validate_<field>(self, value)`
-针对单个字段的验证逻辑。
+针对单个字段的验证逻辑。其中，对于字段中`required`和`allow_null`的校验，是在`field.get_value()`的阶段，而不是`validate_xxx()`，所以这个函数里面拿不到未传字段，校验已经提前失败了。
 
 #### `.validate(self, attrs)`
 跨字段或整体校验逻辑。
