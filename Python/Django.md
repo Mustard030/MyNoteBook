@@ -4118,10 +4118,10 @@ class TestSerializer(serializers.Serializer):
 }
 ```
 
-这个字典其实可以定义任何key，只需要能对上内部或者自定义校验时，需要抛出校验异常的任意时候调用`self.fail(xxx)`时传入的这个key即可。
+这个字典其实可以定义任何key，只需要能对上内部或者自定义校验时，需要抛出校验异常的任意时候调用[`.fail(xxx)`](#.fail())时传入的这个key即可。
 
 #### 序列化器字段类的常用方法
-##### .fail()
+##### .fail(key)
 定义在`Field`类中，主要用于抛出`ValidationError`。
 
 ### 常见踩坑提示
