@@ -3227,7 +3227,9 @@ else:
 ---
 ### Serializer
 
-通常来说`Serializer`接收的是与数据库对象无关的数据，比如`CommonResponse`之类的
+通常来说`Serializer`接收的是与数据库对象无关的数据，比如`CommonResponse`之类的。
+
+值得注意的是，`BaseSerializer`继承自`Field`，
 
 #### 字段级验证
 
