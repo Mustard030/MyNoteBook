@@ -4121,10 +4121,11 @@ class TestSerializer(serializers.Serializer):
 
 这个字典其实可以定义任何key，只需要能对上内部或者自定义校验时，需要抛出校验异常的任意时候调用[`.fail(xxx)`](#.fail())时传入的这个key即可。自定义的key则需要在自己的字段校验器或者全局校验器中调用`fail`方法并传入自定义的key。
 
-并且，这个字典后面的字符串可以是模板字符串，例如：
+并且，这个字典后面的字符串可以是模板字符串，甚至是LazyString用于i18n
 ```python
 default_error_messages = {  
-	"max_length": "最多只能 {max_length} 个字符"  
+	"max_length": "最多只能 {max_length} 个字符",
+	"min_length": _("xxx")
 }
 # 校验时调用
 self.fail("max_length", max_length=10)
