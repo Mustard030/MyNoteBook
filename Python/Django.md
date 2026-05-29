@@ -4118,7 +4118,7 @@ class TestSerializer(serializers.Serializer):
 }
 ```
 
-这个字典其实可以定义任何key，只需要能对上内部或者自定义校验时
+这个字典其实可以定义任何key，只需要能对上内部或者自定义校验时，→`run_validation`
 
 #### 序列化器字段类的常用方法
 ##### .fail()
