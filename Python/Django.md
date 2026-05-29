@@ -3229,7 +3229,13 @@ else:
 
 通常来说`Serializer`接收的是与数据库对象无关的数据，比如`CommonResponse`之类的。
 
-值得注意的是，`BaseSerializer`继承自`Field`，
+值得注意的是，`BaseSerializer`继承自`Field`，因为 DRF 想统一嵌套结构处理机制，如：
+```python
+class UserSerializer(serializers.Serializer):  
+	profile = ProfileSerializer(required=False) #比如可以不传
+```
+
+因此`Serializer`必须像`Field`一样工作，因此拥有很多`Field`的能力，比如可以设置这个字段是可选的。因此字段类的[参数](#字段构造器公共参数)和[方法](#序列化器字段类的常用方法)也是通用的。
 
 #### 字段级验证
 
@@ -4162,7 +4168,7 @@ class Field:
 
 后面的`kwargs`就是给模板字符串格式化时传参的。
 
-自定义字段要抛出`ValidationError`时也更建议使用这个方法，可以统一管理错误提示。
+由于序列化器也是继承自字段类，因此序列化器要抛出`ValidationError`时也更建议使用这个方法，可以统一管理错误提示。
 
 ### 常见踩坑提示
 
