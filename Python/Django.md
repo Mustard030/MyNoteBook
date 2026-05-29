@@ -4100,7 +4100,7 @@ class Order(models.Model):
 | **性能**     | ORM 会连带 select            | 自己控制 queryset 优化                |
 
 ##### error_messages参数详解
-这个参数主要是和[.fail()](#.fail(key,**kwargs))方法配合使用的，给出的错误code字典会覆盖DRF默认定义的
+这个参数主要是和[.fail()](#.fail(key,**kwargs))方法配合使用。
 常见用法：
 ```python
 class TestSerializer(serializers.Serializer):
@@ -4132,7 +4132,22 @@ self.fail("max_length", max_length=10)
 
 #### 序列化器字段类的常用方法
 ##### .fail(key, \*\*kwargs)
-定义在`Field`类中，主要用于抛出`ValidationError`。
+定义在`Field`类中，主要用于格式化错误字符串并抛出`ValidationError`。
+内部实现：
+```python
+def fail(self, key, **kwargs):
+	"""
+	A helper method that simply raises a validation error.
+	"""
+	try:
+		msg = self.error_messages[key]
+	except KeyError:
+		class_name = self.__class__.__name__
+		msg = MISSING_ERROR_MESSAGE.format(class_name=class_name, key=key)
+		raise AssertionError(msg)
+	message_string = msg.format(**kwargs)  # 关键在这里
+	raise ValidationError(message_string, code=key)
+```
 
 ### 常见踩坑提示
 
