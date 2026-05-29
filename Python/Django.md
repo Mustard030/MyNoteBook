@@ -4042,7 +4042,7 @@ class ColorField(serializers.Field):
 
 
 
-#### 字段构造器公共参数
+#### 字段类公共参数
 
 | 参数                | 类型   | 说明          | 示例                               |
 | ----------------- | ---- | ----------- | -------------------------------- |
@@ -4142,7 +4142,7 @@ self.fail("max_length", max_length=10)
 各类字段里定义的`error_message`自行查看`Field`及其子类中定义的`default_error_messages`，常用的有`required`, `null`, `invalid`
 
 
-#### 序列化器字段类的常用方法
+#### 字段类的常用方法
 ##### .fail(key, \*\*kwargs)
 定义在`Field`类中，主要用于格式化错误字符串并抛出`ValidationError`。
 内部实现：
