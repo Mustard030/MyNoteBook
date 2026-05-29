@@ -4130,6 +4130,23 @@ default_error_messages = {
 self.fail("max_length", max_length=10)
 ```
 
+各类字段里定义的error_message有这些：
+
+| key               | 出现的Field                | 可传参数       | 出现情况              |
+| ----------------- | ----------------------- | ---------- | ----------------- |
+| required          | ALL                     |            | 定义了必须但没传值         |
+| null              | ALL                     |            | 定义了不可为None但值为None |
+| invalid           | ALL                     |            | 不是有效的值            |
+| invalid_unicode   | SlugField               |            | 不是Unicode         |
+| blank             | CharField               |            | 值为空字符串            |
+| max_length        | CharField               | max_length | 超出长度              |
+| min_length        | CharField               | min_length | 低于最低长度            |
+| max_value         | IntegerField、FloatField | max_value  | 大于等于某值            |
+| min_value         | IntegerField、FloatField | min_value  | 小于等于某值            |
+| max_string_length | IntegerField、FloatField |            | 字符串类型的数超过1000位    |
+|                   |                         |            |                   |
+
+
 #### 序列化器字段类的常用方法
 ##### .fail(key, \*\*kwargs)
 定义在`Field`类中，主要用于格式化错误字符串并抛出`ValidationError`。
@@ -4139,7 +4156,7 @@ class Field:
 	def __init__(self, ..., error_messages=None, ...):
 		messages = {}  
 		for cls in reversed(self.__class__.__mro__):  
-		    messages.update(getattr(cls, 'default_error_messages', {}))  # 看类里面有没有定义default_error_messages
+		    messages.update(getattr(cls, 'default_error_messages', {}))  # 看字段类里面有没有定义default_error_messages
 		messages.update(error_messages or {})  
 		self.error_messages = messages
 
