@@ -4130,7 +4130,7 @@ default_error_messages = {
 self.fail("max_length", max_length=10)
 ```
 
-各类字段里定义的`error_message`自行查看`default_error_messages`，常用的有`required`，``,`invalid`
+各类字段里定义的`error_message`自行查看`Field`及其子类中定义的`default_error_messages`，常用的有`required`, `null`, `invalid`
 
 
 #### 序列化器字段类的常用方法
