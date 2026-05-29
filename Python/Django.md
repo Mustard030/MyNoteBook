@@ -4123,7 +4123,7 @@ class TestSerializer(serializers.Serializer):
 
 并且，这个字典后面的字符串可以是模板字符串，例如：
 ```python
-error_messages = {  
+default_error_messages = {  
 	"max_length": "最多只能 {max_length} 个字符"  
 }
 # 校验时调用
@@ -4135,19 +4135,26 @@ self.fail("max_length", max_length=10)
 定义在`Field`类中，主要用于格式化错误字符串并抛出`ValidationError`。
 内部实现：
 ```python
-def fail(self, key, **kwargs):
-	"""
-	A helper method that simply raises a validation error.
-	"""
-	try:
-		msg = self.error_messages[key]
-	except KeyError:
-		class_name = self.__class__.__name__
-		msg = MISSING_ERROR_MESSAGE.format(class_name=class_name, key=key)
-		raise AssertionError(msg)
-	message_string = msg.format(**kwargs)  # 关键在这里
-	raise ValidationError(message_string, code=key)
+class Field:
+	def __init__(self, ..., error_messages=None, ...):
+		messages = {}  
+		for cls in reversed(self.__class__.__mro__):  
+		    messages.update(getattr(cls, 'default_error_messages', {}))  
+		messages.update(error_messages or {})  
+		self.error_messages = messages
+
+	def fail(self, key, **kwargs):
+		try:  
+		    msg = self.error_messages[key]  # 从error_messages匹配对应的错误提示
+		except KeyError:  
+		    class_name = self.__class__.__name__  
+		    msg = MISSING_ERROR_MESSAGE.format(class_name=class_name, key=key)  # 如果抛出了错误但是错误信息模板里没有对应的key，则会报没有定义错误信息的Error
+		    raise AssertionError(msg)
+		message_string = msg.format(**kwargs)  # 关键在这里
+		raise ValidationError(message_string, code=key)
 ```
+
+后面的`kwargs`就是给模板字符串格式化时传参的。
 
 ### 常见踩坑提示
 
