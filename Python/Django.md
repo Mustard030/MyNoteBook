@@ -1542,7 +1542,7 @@ with transaction.atomic(savepoint=False):
 
 SavePoint指数据库不会真的开启一个事务，而是将其变为保存点，当内层事务抛出异常回滚时，只会回滚到保存点，不会影响外层事务。
 
-禁用保存点可以提高性能，但会直接污染整个事务，
+禁用保存点可以提高性能，此时的行为会像Java一样加入已有事务，如果没有已有事务则创建。
 
 #### TransactionManagementError
 如果事务里发生异常，事务会进入`broken state`，后续sql会直接报TransactionManagementError。
