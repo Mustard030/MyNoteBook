@@ -4121,7 +4121,8 @@ class TestSerializer(serializers.Serializer):
 这个字典其实可以定义任何key，只需要能对上内部或者自定义校验时
 
 #### 序列化器字段类的常用方法
-
+##### .fail()
+定义在`Field`类中，主要用于抛出`ValidationError`。
 
 ### 常见踩坑提示
 
