@@ -4100,6 +4100,7 @@ class Order(models.Model):
 | **性能**     | ORM 会连带 select            | 自己控制 queryset 优化                |
 
 ##### error_messages参数详解
+这个参数主要是和[.fail()](#.fail(key,**kwargs))方法配合使用的，给出的错误code字典会覆盖DRF默认定义的
 常见用法：
 ```python
 class TestSerializer(serializers.Serializer):
@@ -4121,7 +4122,13 @@ class TestSerializer(serializers.Serializer):
 这个字典其实可以定义任何key，只需要能对上内部或者自定义校验时，需要抛出校验异常的任意时候调用[`.fail(xxx)`](#.fail())时传入的这个key即可。自定义的key则需要在自己的字段校验器或者全局校验器中调用`fail`方法并传入自定义的key。
 
 并且，这个字典后面的字符串可以是模板字符串，例如：
-
+```python
+error_messages = {  
+	"max_length": "最多只能 {max_length} 个字符"  
+}
+# 校验时调用
+self.fail("max_length", max_length=10)
+```
 
 #### 序列化器字段类的常用方法
 ##### .fail(key, \*\*kwargs)
