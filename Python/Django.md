@@ -4049,7 +4049,7 @@ class ColorField(serializers.Field):
 | style             | dict | HTML 表单渲染提示 | style={'input_type': 'password'} |
 | label / help_text | str  | 元信息         | label='标题'                       |
 
-#### `source`参数详解
+##### `source`参数详解
 
 ```python
 class UserSerializer(serializers.Serializer):
@@ -4098,6 +4098,30 @@ class Order(models.Model):
 | **代码位置**   | 声明字段时一次性写完                | 单独写 `get_<field>(self, obj)` 方法 |
 | **可读性**    | 简单场景直观                    | 复杂逻辑更清晰                         |
 | **性能**     | ORM 会连带 select            | 自己控制 queryset 优化                |
+
+##### error_messages参数详解
+常见用法：
+```python
+class TestSerializer(serializers.Serializer):
+    name = serializers.CharField(
+        required=True,
+        error_messages={
+            "required": "必须传入姓名",
+        }
+    )
+    
+# 效果
+{  
+	"name": [  
+		"必须传入姓名"  
+	]  
+}
+```
+
+这个字典其实可以定义任何key，只需要能对上内部或者自定义校验时
+
+#### 序列化器字段类的常用方法
+
 
 ### 常见踩坑提示
 
