@@ -4139,7 +4139,7 @@ class Field:
 	def __init__(self, ..., error_messages=None, ...):
 		messages = {}  
 		for cls in reversed(self.__class__.__mro__):  
-		    messages.update(getattr(cls, 'default_error_messages', {}))  
+		    messages.update(getattr(cls, 'default_error_messages', {}))  # 看类里面有没有定义default_error_messages
 		messages.update(error_messages or {})  
 		self.error_messages = messages
 
@@ -4155,6 +4155,8 @@ class Field:
 ```
 
 后面的`kwargs`就是给模板字符串格式化时传参的。
+
+平时要抛出`ValidationError`时也更建议使用这个方法，可以统一管理错误提示。
 
 ### 常见踩坑提示
 
