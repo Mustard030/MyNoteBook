@@ -4058,6 +4058,7 @@ class ColorField(serializers.Field):
 | label / help_text | str  | 元信息         | label='标题'                       |
 
 ##### `source`参数详解
+本质上，`source`是在“被序列化对象（object instance）”上做 `getattr` 链式访问
 
 ```python
 class UserSerializer(serializers.Serializer):
