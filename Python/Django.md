@@ -4505,7 +4505,7 @@ class UserListView(generics.ListAPIView):
 
 这有助于防止意外的数据泄露，例如允许用户根据密码哈希字段或其他敏感数据进行排序。
 
-在继承了`OrderingFilter`的自定义排序类中，可以通过`ordering_fields`类属性指定这个排序类允许排序的字段名，但它会优先获取视图类中的`ordering_fields`，如果未在视图上指定 `ordering_fields` 属性，则 filter 类将默认允许用户对 `serializer_class` 属性指定的序列化程序上的任何可读字段进行筛选。
+在继承了`OrderingFilter`的自定义排序类中，会优先获取视图类中的`ordering_fields`，如果没有则获取排序类中的`ordering_fields`，如果都没有，则 filter 类将默认允许用户对 `serializer_class` 属性指定的序列化程序上的任何可读字段进行筛选。
 
 如果你确信视图使用的查询集不包含任何敏感数据，你也可以通过使用特殊值 `'__all__'` 显式指定视图应该允许对任何模型字段或查询集聚合进行排序。
 
