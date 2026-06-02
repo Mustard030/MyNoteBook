@@ -4071,8 +4071,8 @@ class UserSerializer(serializers.Serializer):
 当source使用点语法查找关联对象属性时，具有内置的容错机制。比如上述例子中的`author`为`None`时，会自动返回`None`，而不是抛出`AttributeError`。
 
 **列表/方法**
-- 方法：`source='get_full_name'`（DRF 会自动调用无参方法）
-- 列表索引：`source='tags.0.name'`（DRF 3.12+）
+- 方法：`source='get_full_name'`（DRF 会自动调用无参方法）不推荐，不如`SerializerMethodField`直观
+- 列表索引：`source='tags.0.name'`（DRF 3.12+）不推荐，不稳定
 
 **只读计算字段**
 
