@@ -4109,6 +4109,7 @@ class Order(models.Model):
 
 `source='*'` 在 DRF 里是一个**比较特殊的信号字段**，它的核心含义是：**这个字段不直接从 model attribute / field 取值，而是“完全自定义计算出来的字段”**
 
+设置`source='*'` 、`read_only=True`、`method_name`，则完全等价于`SerializerMethodField`
 
 ##### error_messages参数详解
 这个参数主要是和[.fail()](#.fail(key,**kwargs))方法配合使用。
