@@ -4107,6 +4107,9 @@ class Order(models.Model):
 | **可读性**    | 简单场景直观                    | 复杂逻辑更清晰                         |
 | **性能**     | ORM 会连带 select            | 自己控制 queryset 优化                |
 
+`source='*'` 在 DRF 里是一个**比较特殊的信号字段**，它的核心含义是：**这个字段不直接从 model attribute / field 取值，而是“完全自定义计算出来的字段”**
+
+
 ##### error_messages参数详解
 这个参数主要是和[.fail()](#.fail(key,**kwargs))方法配合使用。
 常见用法：
