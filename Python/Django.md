@@ -4287,162 +4287,6 @@ def check_permissions(self, request):
 
 也可以在逻辑中动态修改`self.message`以支持不同情况返回不同提示。
 
-## 缓存
-Django 提供了一个 `method_decorator`，可以将装饰器与CBV一起使用。这可以与其他缓存装饰器一起使用，例如 `cache_page`、 `vary_on_cookie` 和 `vary_on_headers`。FBV只需要直接把装饰器打在方法上就行了。
-例如：
-```python
-
-from django.utils.decorators import method_decorator
-from django.views.decorators.cache import cache_page
-from django.views.decorators.vary import vary_on_cookie, vary_on_headers
-
-from rest_framework.response import Response
-from rest_framework import viewsets
-
-
-class UserViewSet(viewsets.ViewSet):
-    # With cookie: cache requested url for each user for 2 hours
-    @method_decorator(cache_page(60 * 60 * 2))
-    @method_decorator(vary_on_cookie)
-	@method_decorator(vary_on_headers("Authorization"))
-    def list(self, request, format=None):
-        content = {
-            "user_feed": request.user.get_user_feed(),
-        }
-        return Response(content)
-
-```
-
-**注意：**`cache_page` 装饰器仅缓存 状态为 200 的 `GET` 和 `HEAD` 响应。
-
-### cache_page
-**作用**：把视图（或 URLConf）的**完整响应**缓存起来，下一次命中直接返回 HTML，**不执行视图代码**。
-
-### vary_on_cookie
-**作用**：告诉缓存系统：**“不同 Cookie 值视为不同页面”**，防止「A 用户登录后看到 B 用户缓存页面」。
-
-### vary_on_headers
-**作用**：按任意 **HTTP 请求头** 区分缓存，比 `Cookie` 更通用。
-
-Django 的 `vary_on_cookie` / `vary_on_headers` 本质上就是在响应里加一条
-```
-Vary: Cookie
-# 或
-Vary: User-Agent, Accept-Language
-```
-
-缓存中间件 **只按 `Vary` 头里列出的字段** 生成缓存键；  
-浏览器、CDN、反向代理（如 Nginx、Varnish、Cloudflare）也都遵循 **HTTP 规范**，用 **同样的 `Vary` 字段** 判断是否命中缓存。
-
-## 限流
-限流这个功能比较微妙，很多时候其实用不上限流
-
-首先需要说明自定义基类的属性和方法，再说明官方三个限流类的作用，再看用法才能看懂
-
-首先，官方的三个类都继承自`SimpleRateThrottle`，我们自定义限流类也基本是继承这个。
-
-### SimpleRateThrottle
-```python
-class SimpleRateThrottle(BaseThrottle):
-    """
-    A simple cache implementation, that only requires `.get_cache_key()`
-    to be overridden.
-
-    The rate (requests / seconds) is set by a `rate` attribute on the Throttle
-    class.  The attribute is a string of the form 'number_of_requests/period'.
-
-    Period should be one of: ('s', 'sec', 'm', 'min', 'h', 'hour', 'd', 'day')
-
-    Previous request information used for throttling is stored in the cache.
-    """
-    cache = default_cache
-    timer = time.time
-    cache_format = 'throttle_%(scope)s_%(ident)s'
-    scope = None
-    THROTTLE_RATES = api_settings.DEFAULT_THROTTLE_RATES
-
-    def __init__(self):
-        if not getattr(self, 'rate', None):
-            self.rate = self.get_rate()
-        self.num_requests, self.duration = self.parse_rate(self.rate)
-```
-
-**属性**
-
-| 属性               | 类型         | 作用                                                                                |
-| ---------------- | ---------- | --------------------------------------------------------------------------------- |
-| `cache`          | Django缓存实例 | 保存请求历史时间戳的存储后端。默认=`default_cache`（即`CACHES['default']`）。想换 Redis 直接换 `CACHES` 即可。 |
-| `timer`          | 可调用对象      | 取当前时间的函数。默认=`time.time`（秒级浮点）。测试时可 MonkeyPatch 成 `lambda: 1234567890` 做时间冻结。      |
-| `cache_format`   | str        | 生成缓存 key 的模板。`%(scope)s` 和 `%(ident)s` 会被替换，例如 `throttle_user_42`。                |
-| `scope`          | str/None   | 当前限流器的“命名空间”。**必须**在子类里设置，或显式传 `rate=`。                                           |
-| `THROTTLE_RATES` | dict       | 从 `api_settings.DEFAULT_THROTTLE_RATES` 读取配置，例如 `{'upload': '10/min'}`。           |
-
-实际上，`scope`就是用来获取这个限流类真正限制速率（`rate`）的key，所以要么直接设置`rate`，要么通过`scope`获得`rate`。
-
-
-**方法**
-
-| 名称                             | 作用                                                                                         |
-| ------------------------------ | ------------------------------------------------------------------------------------------ |
-| `__init__()`                   | 把 `rate` 字符串解析成 `(num_requests, duration)` 两个整数，供后面做比较。                                    |
-| `get_cache_key(request, view)` | **必须**被子类覆盖；返回一个唯一字符串作为缓存键，或返回 `None` 表示“此请求不限流”。                                          |
-| `get_rate()`                   | 若子类没写 `rate = '5/m'`，则按 `self.scope` 去 `THROTTLE_RATES` 里查配置。找不到就抛 `ImproperlyConfigured`。 |
-| `parse_rate(rate)`             | 把 `'5/min'` 拆成 `(5, 60)`；把 `'100/d'` 拆成 `(100, 86400)`。                                    |
-| `allow_request(request, view)` | **真正判断是否放行**：<br>1. 取 key → 2. 读历史 → 3. 清过期 → 4. 计数 → 5. 成功/失败。                            |
-| `throttle_success()`           | 把当前时间戳插入缓存列表，并重新写回缓存（带过期时间）。                                                               |
-| `throttle_failure()`           | 直接返回 `False`，给 DRF 抛 `Throttled` 异常。                                                       |
-| `wait()`                       | 返回客户端需要等待的秒数（用于 `Retry-After` 响应头）。                                                        |
-
-**配置**
-```python title:setting.py
-# 全局生效
-REST_FRAMEWORK = {
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',  # 指定限流类
-        'rest_framework.throttling.UserRateThrottle'
-    ],
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/day',  # 指定限流类所限制的速率，其中的key来自于限流类的类属性scope
-        'user': '1000/day'
-    }
-}
-
-# 如
-class BurstRateThrottle(UserRateThrottle):
-    scope = 'burst'
-
-```
-
-
-### AnonRateThrottle
-`AnonRateThrottle`只会限制未经身份验证的用户。传入请求的 IP 地址用于生成要限制的唯一密钥。
-
-允许的请求速率由以下选项之一确定（按优先顺序）。
-- 类上的 `rate` 属性，可以通过重写 `AnonRateThrottle` 并设置属性来提供。
-- `DEFAULT_THROTTLE_RATES['anon']` 设置。其中`anon`是`AnonRateThrottle`默认的`scope`
-
-`AnonRateThrottle` 适用于要限制来自未知来源的请求速率。
-
-### UserRateThrottle
-`UserRateThrottle` 会将用户限制为跨 API 的给定请求速率。用户 ID 用于生成要限制的唯一密钥。未经身份验证的请求将回退为使用传入请求的 IP 地址来生成要限制的唯一密钥。
-
-允许的请求速率由以下选项之一确定（按优先顺序）。
-- 类上的 `rate` 属性，可以通过重写 `UserRateThrottle` 并设置属性来提供。
-- `DEFAULT_THROTTLE_RATES['user']` 设置。其中`user`是`UserRateThrottle`默认的`scope`
-
-### ScopedRateThrottle
-`ScopedRateThrottle`用于限制所有配置了同一个`scope`的API。仅当正在访问的视图包含 `.throttle_scope` 属性时，才会应用此限制。然后，通过将请求的`scope`与唯一的用户 ID 或 IP 地址连接起来，形成唯一的节流键。
-
-```python
-# 对视图应用限流类
-class ReportView(APIView):
-    throttle_classes = [UserRateThrottle]   # 只对这个视图生效
-    throttle_scope   = "report"             # 与 ScopedRateThrottle 配合，同样的，也需要在DEFAULT_THROTTLE_RATES配置report: xxx/day或其他
-```
-
-### 自定义限流类
-可以继承`BaseThrottle`，并实现`.allow_request(self, request, view)`方法，如果通过，则应该返回`True`，否则返回`False`。
-还可以覆盖`wait()`方法，如果实现了这个方法，应该返回建议的秒数，以便于在尝试下个请求之前等待。仅当`.allow_request()`返回`False`时，才会调用`wait()`，如果实现了`wait()`且方法受到了流控，则响应中会包含`Retry-After`请求头。
 
 ## 过滤
 
@@ -4702,34 +4546,15 @@ class AliasedOrderingFilter(filters.OrderingFilter):  # drf的filters.OrderingFi
 	def get_ordering_fields(self, view):
         return getattr(view, 'ordering_fields', self.ordering_fields)
 
-	def get_valid_fields(self, queryset, view, context={}):
-        valid_fields = self.get_ordering_fields(view)
-
-        if valid_fields is None:
-            # Default to allowing filtering on serializer fields
-            return self.get_default_valid_fields(queryset, view, context)
-
-        elif valid_fields == '__all__':
-            # View explicitly allows filtering on any model field
-            valid_fields = [
-                (field.name, field.verbose_name) for field in queryset.model._meta.fields
-            ]
-            valid_fields += [
-                (key, key.title().split('__'))
-                for key in queryset.query.annotations
-            ]
-        # 新增对字典类型的支持
-        elif isinstance(valid_fields, dict):
-            valid_fields = [
-                (real, alias) for alias, real in valid_fields
-            ]
-        else:
-            valid_fields = [
-                (item, item) if isinstance(item, str) else item
-                for item in valid_fields
-            ]
-
-        return valid_fields
+	def get_valid_fields(self, queryset, view, context={}):  
+	    valid_fields = self.get_ordering_fields(view)  
+	  
+	    if isinstance(valid_fields, dict):  
+	        return [  
+	            (real, alias) for alias, real in valid_fields.items()  
+	        ]  
+	    else:  
+	        return super().get_valid_fields(queryset, view, context)
 
     def get_ordering(self, request, queryset, view):
 		params = request.query_params.get(self.ordering_param)
@@ -4981,3 +4806,161 @@ class UserListView(APIView):
 3. 提供 `page_size` 参数允许客户端控制
 4. 设置合理的 `max_page_size` 防止DoS攻击
 5. 配合`ordering`参数保证分页稳定性
+
+
+## 缓存
+Django 提供了一个 `method_decorator`，可以将装饰器与CBV一起使用。这可以与其他缓存装饰器一起使用，例如 `cache_page`、 `vary_on_cookie` 和 `vary_on_headers`。FBV只需要直接把装饰器打在方法上就行了。
+例如：
+```python
+
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_cookie, vary_on_headers
+
+from rest_framework.response import Response
+from rest_framework import viewsets
+
+
+class UserViewSet(viewsets.ViewSet):
+    # With cookie: cache requested url for each user for 2 hours
+    @method_decorator(cache_page(60 * 60 * 2))
+    @method_decorator(vary_on_cookie)
+	@method_decorator(vary_on_headers("Authorization"))
+    def list(self, request, format=None):
+        content = {
+            "user_feed": request.user.get_user_feed(),
+        }
+        return Response(content)
+
+```
+
+**注意：**`cache_page` 装饰器仅缓存 状态为 200 的 `GET` 和 `HEAD` 响应。
+
+### cache_page
+**作用**：把视图（或 URLConf）的**完整响应**缓存起来，下一次命中直接返回 HTML，**不执行视图代码**。
+
+### vary_on_cookie
+**作用**：告诉缓存系统：**“不同 Cookie 值视为不同页面”**，防止「A 用户登录后看到 B 用户缓存页面」。
+
+### vary_on_headers
+**作用**：按任意 **HTTP 请求头** 区分缓存，比 `Cookie` 更通用。
+
+Django 的 `vary_on_cookie` / `vary_on_headers` 本质上就是在响应里加一条
+```
+Vary: Cookie
+# 或
+Vary: User-Agent, Accept-Language
+```
+
+缓存中间件 **只按 `Vary` 头里列出的字段** 生成缓存键；  
+浏览器、CDN、反向代理（如 Nginx、Varnish、Cloudflare）也都遵循 **HTTP 规范**，用 **同样的 `Vary` 字段** 判断是否命中缓存。
+
+## 限流
+限流这个功能比较微妙，很多时候其实用不上限流
+
+首先需要说明自定义基类的属性和方法，再说明官方三个限流类的作用，再看用法才能看懂
+
+首先，官方的三个类都继承自`SimpleRateThrottle`，我们自定义限流类也基本是继承这个。
+
+### SimpleRateThrottle
+```python
+class SimpleRateThrottle(BaseThrottle):
+    """
+    A simple cache implementation, that only requires `.get_cache_key()`
+    to be overridden.
+
+    The rate (requests / seconds) is set by a `rate` attribute on the Throttle
+    class.  The attribute is a string of the form 'number_of_requests/period'.
+
+    Period should be one of: ('s', 'sec', 'm', 'min', 'h', 'hour', 'd', 'day')
+
+    Previous request information used for throttling is stored in the cache.
+    """
+    cache = default_cache
+    timer = time.time
+    cache_format = 'throttle_%(scope)s_%(ident)s'
+    scope = None
+    THROTTLE_RATES = api_settings.DEFAULT_THROTTLE_RATES
+
+    def __init__(self):
+        if not getattr(self, 'rate', None):
+            self.rate = self.get_rate()
+        self.num_requests, self.duration = self.parse_rate(self.rate)
+```
+
+**属性**
+
+| 属性               | 类型         | 作用                                                                                |
+| ---------------- | ---------- | --------------------------------------------------------------------------------- |
+| `cache`          | Django缓存实例 | 保存请求历史时间戳的存储后端。默认=`default_cache`（即`CACHES['default']`）。想换 Redis 直接换 `CACHES` 即可。 |
+| `timer`          | 可调用对象      | 取当前时间的函数。默认=`time.time`（秒级浮点）。测试时可 MonkeyPatch 成 `lambda: 1234567890` 做时间冻结。      |
+| `cache_format`   | str        | 生成缓存 key 的模板。`%(scope)s` 和 `%(ident)s` 会被替换，例如 `throttle_user_42`。                |
+| `scope`          | str/None   | 当前限流器的“命名空间”。**必须**在子类里设置，或显式传 `rate=`。                                           |
+| `THROTTLE_RATES` | dict       | 从 `api_settings.DEFAULT_THROTTLE_RATES` 读取配置，例如 `{'upload': '10/min'}`。           |
+
+实际上，`scope`就是用来获取这个限流类真正限制速率（`rate`）的key，所以要么直接设置`rate`，要么通过`scope`获得`rate`。
+
+
+**方法**
+
+| 名称                             | 作用                                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `__init__()`                   | 把 `rate` 字符串解析成 `(num_requests, duration)` 两个整数，供后面做比较。                                    |
+| `get_cache_key(request, view)` | **必须**被子类覆盖；返回一个唯一字符串作为缓存键，或返回 `None` 表示“此请求不限流”。                                          |
+| `get_rate()`                   | 若子类没写 `rate = '5/m'`，则按 `self.scope` 去 `THROTTLE_RATES` 里查配置。找不到就抛 `ImproperlyConfigured`。 |
+| `parse_rate(rate)`             | 把 `'5/min'` 拆成 `(5, 60)`；把 `'100/d'` 拆成 `(100, 86400)`。                                    |
+| `allow_request(request, view)` | **真正判断是否放行**：<br>1. 取 key → 2. 读历史 → 3. 清过期 → 4. 计数 → 5. 成功/失败。                            |
+| `throttle_success()`           | 把当前时间戳插入缓存列表，并重新写回缓存（带过期时间）。                                                               |
+| `throttle_failure()`           | 直接返回 `False`，给 DRF 抛 `Throttled` 异常。                                                       |
+| `wait()`                       | 返回客户端需要等待的秒数（用于 `Retry-After` 响应头）。                                                        |
+
+**配置**
+```python title:setting.py
+# 全局生效
+REST_FRAMEWORK = {
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',  # 指定限流类
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/day',  # 指定限流类所限制的速率，其中的key来自于限流类的类属性scope
+        'user': '1000/day'
+    }
+}
+
+# 如
+class BurstRateThrottle(UserRateThrottle):
+    scope = 'burst'
+
+```
+
+
+### AnonRateThrottle
+`AnonRateThrottle`只会限制未经身份验证的用户。传入请求的 IP 地址用于生成要限制的唯一密钥。
+
+允许的请求速率由以下选项之一确定（按优先顺序）。
+- 类上的 `rate` 属性，可以通过重写 `AnonRateThrottle` 并设置属性来提供。
+- `DEFAULT_THROTTLE_RATES['anon']` 设置。其中`anon`是`AnonRateThrottle`默认的`scope`
+
+`AnonRateThrottle` 适用于要限制来自未知来源的请求速率。
+
+### UserRateThrottle
+`UserRateThrottle` 会将用户限制为跨 API 的给定请求速率。用户 ID 用于生成要限制的唯一密钥。未经身份验证的请求将回退为使用传入请求的 IP 地址来生成要限制的唯一密钥。
+
+允许的请求速率由以下选项之一确定（按优先顺序）。
+- 类上的 `rate` 属性，可以通过重写 `UserRateThrottle` 并设置属性来提供。
+- `DEFAULT_THROTTLE_RATES['user']` 设置。其中`user`是`UserRateThrottle`默认的`scope`
+
+### ScopedRateThrottle
+`ScopedRateThrottle`用于限制所有配置了同一个`scope`的API。仅当正在访问的视图包含 `.throttle_scope` 属性时，才会应用此限制。然后，通过将请求的`scope`与唯一的用户 ID 或 IP 地址连接起来，形成唯一的节流键。
+
+```python
+# 对视图应用限流类
+class ReportView(APIView):
+    throttle_classes = [UserRateThrottle]   # 只对这个视图生效
+    throttle_scope   = "report"             # 与 ScopedRateThrottle 配合，同样的，也需要在DEFAULT_THROTTLE_RATES配置report: xxx/day或其他
+```
+
+### 自定义限流类
+可以继承`BaseThrottle`，并实现`.allow_request(self, request, view)`方法，如果通过，则应该返回`True`，否则返回`False`。
+还可以覆盖`wait()`方法，如果实现了这个方法，应该返回建议的秒数，以便于在尝试下个请求之前等待。仅当`.allow_request()`返回`False`时，才会调用`wait()`，如果实现了`wait()`且方法受到了流控，则响应中会包含`Retry-After`请求头。
