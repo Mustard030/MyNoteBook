@@ -4244,6 +4244,8 @@ class BasePermission(metaclass=BasePermissionMetaclass):
     """
     A base class from which all permission classes should inherit.
     """
+    message: str = None
+    code: str = None
 
     def has_permission(self, request, view):
         """
@@ -4266,6 +4268,24 @@ class BasePermission(metaclass=BasePermissionMetaclass):
 如果想要限制谁可以创建有两个常规做法，在Serialzer里做校验（字段级或者validate()），或者重写`ViewSet.perform_create()`
 
 权限类只要是继承自`rest_framework.permissions.BasePermission`的，就可以使用位运算符进行权限组合，例如`permission_classes = [IsAuthenticated|ReadOnly]`，它支持 `&`（与），`|`（或）和`~`（非）。
+
+权限类可以在类属性中定义`message`和`code`，在`APIView`中可以被读取到。要注意的是这里的`code`不是http返回码，而是DRF体系中的字符串错误码。
+```python
+def check_permissions(self, request):
+	"""
+	Check if the request should be permitted.
+	Raises an appropriate exception if the request is not permitted.
+	"""
+	for permission in self.get_permissions():
+		if not permission.has_permission(request, self):
+			self.permission_denied(
+				request,
+				message=getattr(permission, 'message', None),
+				code=getattr(permission, 'code', None)
+			)
+```
+
+也可以在逻辑中动态修改`self.message`以支持不同情况返回不同提示。
 
 ## 缓存
 Django 提供了一个 `method_decorator`，可以将装饰器与CBV一起使用。这可以与其他缓存装饰器一起使用，例如 `cache_page`、 `vary_on_cookie` 和 `vary_on_headers`。FBV只需要直接把装饰器打在方法上就行了。
