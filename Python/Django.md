@@ -4108,6 +4108,11 @@ class Order(models.Model):
 | **性能**     | ORM 会连带 select            | 自己控制 queryset 优化                |
 
 `source='*'` 在 DRF 里是一个**比较特殊的信号字段**，它的核心含义是：**这个字段不直接从 model attribute / field 取值，而是“完全自定义计算出来的字段”**
+主要用于以下场景：
+1. SerializerMethodField / 自定义 Field（最常见）
+2. 完全不依赖 model 字段的“派生字段
+3. 复合逻辑字段（跨字段 / 跨模型计算）
+4. 纯展示字段（数据库不存在）
 
 设置`source='*'` 、`read_only=True`、`method_name`，则完全等价于`SerializerMethodField`
 
