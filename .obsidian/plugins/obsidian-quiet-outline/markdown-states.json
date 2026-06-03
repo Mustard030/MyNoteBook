@@ -14,15 +14,15 @@
     "expandedKeys": []
   },
   "Python/Django.md": {
-    "scroll": 4052.3341368256256,
+    "scroll": 4059.977048022599,
     "cursor": {
       "from": {
-        "line": 4060,
-        "ch": 56
+        "line": 4058,
+        "ch": 0
       },
       "to": {
-        "line": 4060,
-        "ch": 56
+        "line": 4058,
+        "ch": 0
       }
     },
     "expandedKeys": [
@@ -84,6 +84,20 @@
       "to": {
         "line": 2,
         "ch": 0
+      }
+    },
+    "expandedKeys": []
+  },
+  "CICD/Docker.md": {
+    "scroll": 3.5239786856127884,
+    "cursor": {
+      "from": {
+        "line": 10,
+        "ch": 3
+      },
+      "to": {
+        "line": 10,
+        "ch": 8
       }
     },
     "expandedKeys": []
