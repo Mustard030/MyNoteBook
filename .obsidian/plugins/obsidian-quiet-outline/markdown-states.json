@@ -110,16 +110,17 @@
     "scroll": 58.84167237834133,
     "cursor": {
       "from": {
-        "line": 84,
-        "ch": 2
+        "line": 85,
+        "ch": 12
       },
       "to": {
-        "line": 84,
-        "ch": 0
+        "line": 85,
+        "ch": 12
       }
     },
     "expandedKeys": [
-      "item-1-0"
+      "item-1-0",
+      "item-2-4"
     ]
   },
   "其他知识/Shell.md": {
