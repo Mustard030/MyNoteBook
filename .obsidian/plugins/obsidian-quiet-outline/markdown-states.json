@@ -107,18 +107,35 @@
     ]
   },
   "A3本地部署-中文版.md": {
-    "scroll": 67.71555860178204,
+    "scroll": 58.84167237834133,
     "cursor": {
       "from": {
-        "line": 83,
-        "ch": 0
+        "line": 84,
+        "ch": 2
       },
       "to": {
-        "line": 83,
+        "line": 84,
         "ch": 0
       }
     },
     "expandedKeys": [
+      "item-1-0"
+    ]
+  },
+  "其他知识/Shell.md": {
+    "scroll": 403.5896980461812,
+    "cursor": {
+      "from": {
+        "line": 426,
+        "ch": 0
+      },
+      "to": {
+        "line": 426,
+        "ch": 0
+      }
+    },
+    "expandedKeys": [
+      "item-2-1",
       "item-1-0"
     ]
   }
