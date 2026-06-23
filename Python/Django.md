@@ -3178,6 +3178,22 @@ return copy.deepcopy(self._declared_fields)
 | 保存  | `serializer.save()`                            | 创建 / 更新模型           |
 | 响应  | `return Response(serializer.data)`             | 输出序列化数据             |
 
+DRF序列化器执行顺序：
+```python
+Serializer.is_valid()
+    ↓
+run_validation()
+    ↓
+to_internal_value()
+    ↓
+for field in fields:
+    field.run_validation()
+    validate_<field>()
+    validated_data[field] = value
+    ↓
+validate(validated_data)
+```
+
 | 分类   | 常用属性                             | 常用方法                                             |
 | ---- | -------------------------------- | ------------------------------------------------ |
 | 输入处理 | `initial_data`, `validated_data` | `is_valid()`, `validate_<field>()`, `validate()` |
