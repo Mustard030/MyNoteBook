@@ -1713,8 +1713,13 @@ async def read_books(session: AsyncSessionDep):
 ```
 
 ## 数据库迁移工具(Alembic)
+```bash
+pip install alembic
+```
 
-
+```
+alembic init -t async migrations
+```
 
 
 ## SQLModel
