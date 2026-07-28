@@ -1717,9 +1717,13 @@ async def read_books(session: AsyncSessionDep):
 pip install alembic
 ```
 
+完成异步模板的迁移环境初始化
 ```
 alembic init -t async migrations
 ```
+执行上面的命令将会在项目根目录创建`migrations`文件夹、`alembic.ini`配置文件
+
+其中，`migrations`文件夹中的`env.py`将是Alembic执行时主要的配置来源
 
 
 ## SQLModel
