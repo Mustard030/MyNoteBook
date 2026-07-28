@@ -1765,14 +1765,14 @@ optional arguments:
 
 通常建议先使用`--dry-run`来看看会执行什么操作，并且指定`<app_name>`来限制只变更自己修改的那个app。
 
-`--merge`的作用：假设我们都在0003之后各自拉分支，然后各自出现了0004，这时候拉代码就会有两个0004，如果`migrate`就会报错，因为Django不知道用哪个0004。就需要使用`makemigrations --merge <app_label>`。这时Django**不会**修改现有的迁移文件（两个0004），并新增一条“合并迁移”0005。这时再`migrate`就可以了。它解决的是同一级编号的并行冲突。
-
 例：
 
 ```shell
 python manage.py makemigrations --dry-run -v 3 <app_name>  # 只展示迁移，不生成实际文件
 python manage.py makemigrations <app_name>
 ```
+
+`--merge`的作用：假设我们都在0003之后各自拉分支，然后各自出现了0004，这时候拉代码就会有两个0004，如果`migrate`就会报错，因为Django不知道用哪个0004。就需要使用`makemigrations --merge <app_label>`。这时Django**不会**修改现有的迁移文件（两个0004），并新增一条“合并迁移”0005。这时再`migrate`就可以了。它解决的是同一级编号的并行冲突。
 
 #### migrate
 
