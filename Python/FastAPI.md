@@ -1814,11 +1814,11 @@ alembic upgrade head
 
 ## Redis
 ```
-pip install aioredis
+pip install redis
 ```
 
 ```python
-import aioredis
+import redis.asyncaio as aioredis
 from app.config.base import Config
 
 TOKEN_EXPIRY = 3600
@@ -2521,7 +2521,26 @@ async def background_task(
 
 ### Celery
 ```
-pip install celery
+pip install celery asgire
+```
+
+在配置中添加
+```python
+broker_url = Config.REDIS_URL
+result_backend = Config.REDIS_URL
+```
+
+创建`celery_tasks.py`
+```python
+from celery import Celery
+
+c_app = Celery()
+c_app.config_from_object("src.config")
+
+@c_app.task()
+def send_email():
+	message = "Some message"
+
 ```
 
 
