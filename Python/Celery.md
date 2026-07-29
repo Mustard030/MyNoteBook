@@ -112,3 +112,8 @@ celery -A celery_tasks beat
 ```
 pip install flower
 ```
+
+在celery worker启动时附带上子命令
+```
+celery -A celery_tasks flower
+```
