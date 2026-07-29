@@ -1725,6 +1725,11 @@ alembic init -t async migrations
 
 其中，`migrations`文件夹中的`env.py`将是Alembic执行时主要的配置来源
 
+然后使用下面的命令根据当前模型的状态自动生成一个迁移版本
+```
+alembic revision --autogenerate -m "message"
+```
+
 
 ## SQLModel
 SQLModel是FastAPI作者写的另一个库，主要解决需要写两遍代码（一遍 SQLAlchemy Model 建表，一遍 Pydantic Schema 验证）的问题。它的核心理念就是：**同一个类，既是数据库模型（SQLAlchemy），又是数据验证模型（Pydantic）。**
