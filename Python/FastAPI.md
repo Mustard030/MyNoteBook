@@ -2534,6 +2534,7 @@ result_backend = Config.REDIS_URL
 由于celery中不支持使用异步函数，因此需要asgiref来对已有的异步函数进行包装，使其成为同步函数
 ```python
 from celery import Celery
+from asgiref impo
 
 c_app = Celery()
 c_app.config_from_object("src.config")
