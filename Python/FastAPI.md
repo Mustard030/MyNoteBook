@@ -1211,7 +1211,12 @@ def create_exception_handler(status_code: int, initial_detail: Any) -> Callable[
 ```python
 app.add_exception_handler(
 	XXXException,
-	create_exception_handler(400, "Some")
+	create_exception_handler(
+		status_code=status.HTTP_400_BAD_REQUEST,
+		initial_detail={
+			"message": "Something Wrong"
+		}
+	)
 )
 ```
 
