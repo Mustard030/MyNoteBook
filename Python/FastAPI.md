@@ -2621,6 +2621,36 @@ async def websocket_endpoint(websocket: WebSocket, client_id: int, token: str):
 
 
 ## 测试 (Testing)
+```
+pip install pytest
+```
+
+创建`app/tests/`目录，并创建`conftest.py`
+常见的需求是测试时使用独立的数据库
+```python
+# conftest.py
+
+from src.db.main import get_session
+from src import app
+from unittest.mock import Mock
+import pytest
+
+mock_session = Mock()
+mock_user_service = Mock()
+
+def get_mock_session():
+	yeild mock_session
+	
+app.dependency_overrides[get_session] = get_mock_session	
+
+@pytest.fixture
+def fake_session():
+	return mock_session
+
+@pytest.fixture
+def fake_user_service():
+	return mock_user_service
+```
 
 ## 部署 (Deployment)
 
