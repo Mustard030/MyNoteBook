@@ -1789,11 +1789,15 @@ from app.core.config import Config
 
 def create_access_token(user_data: dict, expiry: timedelta):
 	payload = {}
+	
+	payload["exp"] = datetime.now() + expiry
+	
 	token = jwt.encode(
 		payload=payload,
 		key=Config.JWT_SECRET,
-		algoraConfig.ALGORITHM
+		algorithm=Config.JWT_ALGORITHM
 	)
+	return token
 
 def 
 ```
