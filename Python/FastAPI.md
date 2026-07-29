@@ -1783,6 +1783,7 @@ pip install pyjwt
 
 ```python
 import jwt
+import logging
 import uuid
 from datetime import timedelta, datetime
 
@@ -1806,7 +1807,17 @@ def create_access_token(
 	)
 	return token
 
-def decode_token(token: str)
+def decode_token(token: str):
+	try:
+		token_data = jwt.decode(
+			jwt=token,
+			key=Config.JWT_SECRET,
+			algorithms=[Config.JWT_ALGORITHM]
+		)
+		return token_data
+	except jwt.PyJWTError as e:
+		logging.exception(e)
+		return None
 ```
 
 
