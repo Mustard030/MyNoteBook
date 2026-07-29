@@ -1218,6 +1218,16 @@ app.add_exception_handler(
 		}
 	)
 )
+
+@app.exception_hander(500)
+async def internal_server_error(request, exc):
+	return JSONResponse(
+		content={
+			"message": "Something Wrong"
+			"error_code": "server_error"
+		},
+		status_code=status.HTP_500_INTERNAL_SERVER_ERROR
+	)
 ```
 
 
@@ -1882,7 +1892,7 @@ def decode_token(token: str):
 
 
 
-# 中间件 (Middleware) 与 CORS
+# 中间件 (Middleware) 
 
 在请求到达你的路由函数（`def read_items`）之前，和响应离开你的 API 返回给用户之前，中间件都有机会拦截并修改它们。
 当您使用`@app.middleware()`装饰器或`app.add_middleware()`方法添加多个中间件时，每个新的中间件都会包装应用程序，形成一个堆栈。最后添加的中间件位于最外层，第一个添加的中间件位于最内层。
@@ -1941,7 +1951,7 @@ async def add_process_time_header(
 
 
 
-
+## CORS
 **`CORSMiddleware`**
 **CORS (跨域资源共享)** 是中间件最常见、也最让前后端开发者头疼的应用场景。
 FastAPI 内置了标准的解决方案。你不需要自己写 Header，直接配置这个中间件即可。
