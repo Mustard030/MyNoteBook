@@ -1712,29 +1712,6 @@ async def read_books(session: AsyncSessionDep):
     return result.all()
 ```
 
-## 数据库迁移工具(Alembic)
-```bash
-pip install alembic
-```
-
-完成异步模板的迁移环境初始化
-```
-alembic init -t async migrations
-```
-执行上面的命令将会在项目根目录创建`migrations`文件夹、`alembic.ini`配置文件
-
-其中，`migrations`文件夹中的`env.py`将是Alembic执行时主要的配置来源
-
-然后使用下面的命令根据当前模型的状态自动生成一个迁移版本
-```
-alembic revision --autogenerate -m "message"
-```
-
-应用这个迁移
-```
-alembic upgrade head
-```
-
 ## SQLModel
 SQLModel是FastAPI作者写的另一个库，主要解决需要写两遍代码（一遍 SQLAlchemy Model 建表，一遍 Pydantic Schema 验证）的问题。它的核心理念就是：**同一个类，既是数据库模型（SQLAlchemy），又是数据验证模型（Pydantic）。**
 ```python
@@ -1766,6 +1743,31 @@ def create_hero(hero: Hero):  # 这里 hero 既做验证，又直接存库
         session.commit()
         session.refresh(hero)
         return hero
+```
+
+
+
+## 数据库迁移工具(Alembic)
+```bash
+pip install alembic
+```
+
+完成异步模板的迁移环境初始化
+```
+alembic init -t async migrations
+```
+执行上面的命令将会在项目根目录创建`migrations`文件夹、`alembic.ini`配置文件
+
+其中，`migrations`文件夹中的`env.py`将是Alembic执行时主要的配置来源
+
+然后使用下面的命令根据当前模型的状态自动生成一个迁移版本
+```
+alembic revision --autogenerate -m "message"
+```
+
+应用这个迁移
+```
+alembic upgrade head
 ```
 
 
