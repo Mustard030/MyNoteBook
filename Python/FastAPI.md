@@ -2541,9 +2541,11 @@ c_app.config_from_object("src.config")
 
 @c_app.task()
 def send_email(recipients: List[str], subject: str, body:str):
-	message = create_
+	message = create_email(recipients=recipients, subject=subject, body=body)
 	async_to_sync(mail.send_email)(message)  # 这里的send_email是一个异步函数
 ```
+
+这里已经成功将一个函数注册成一个celery任务，
 
 
 
