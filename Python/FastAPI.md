@@ -1191,6 +1191,12 @@ from fastapi.responses import ORJSONResponse
 app = FastAPI(default_response_class=ORJSONResponse)
 ```
 
+### 自定义错误与捕获
+通常我们不满足于直接抛出`HTTPException`，而是根据不同情况抛出更加详细的错误类
+```python
+class AppBaseException(Exception):
+	pass
+```
 
 
 # 依赖注入与生命周期管理 (Dependency Injection & Lifespan)
