@@ -2505,7 +2505,11 @@ def setup_logging():
 # 进阶特性与部署 (Advanced & Deployment)
 ## 后台任务 (Background Tasks)
 ### Celery
+```python
+from fastapi import BackgroundTasks
 
+@app.post("/bgtask", status_)
+```
 
 ## WebSockets
 WebSockets主要涉及三个类：
