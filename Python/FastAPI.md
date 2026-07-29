@@ -2508,7 +2508,11 @@ def setup_logging():
 ```python
 from fastapi import BackgroundTasks
 
-@app.post("/bgtask", status_)
+@app.post("/bgtask", status_code=status.HTTP_201_CREATED)
+async def background_task(
+	bg_tasks: BackgroundTasks
+):
+	bg_tasks.add_task()
 ```
 
 ## WebSockets
