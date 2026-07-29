@@ -250,7 +250,7 @@
     "expandedKeys": []
   },
   "Python/FastAPI.md": {
-    "scroll": 2493.6662097326935,
+    "scroll": 2515.1309115832764,
     "cursor": {
       "from": {
         "line": 2525,
@@ -296,5 +296,33 @@
       "item-2-3",
       "item-1-11"
     ]
+  },
+  "其他知识/Celery.md": {
+    "scroll": 0,
+    "cursor": {
+      "from": {
+        "line": 0,
+        "ch": 0
+      },
+      "to": {
+        "line": 0,
+        "ch": 0
+      }
+    },
+    "expandedKeys": []
+  },
+  "Python/Celery.md": {
+    "scroll": 0,
+    "cursor": {
+      "from": {
+        "line": 0,
+        "ch": 0
+      },
+      "to": {
+        "line": 0,
+        "ch": 0
+      }
+    },
+    "expandedKeys": []
   }
 }
