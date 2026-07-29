@@ -1793,7 +1793,7 @@ async def add_jti_to_blocklist(jti: str) -> None:
 	await token_blocklist.set(
 		name=jti,
 		value="",
-		exp=TOKEN_EXPIRY  # 只需要封禁到token有效期过即可
+		ex=TOKEN_EXPIRY  # 只需要封禁到token有效期过即可
 	)
 	
 async def token_in_blocklist(jti: str) -> bool:
