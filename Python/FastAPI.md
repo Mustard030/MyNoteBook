@@ -1769,11 +1769,34 @@ def create_hero(hero: Hero):  # 这里 hero 既做验证，又直接存库
 ```
 
 
-## CRUD 操作实战
+## CRUD 操作
+
+
+## Redis
 
 
 # 安全与认证 (Security & Auth)
 ## JWT
+```
+pip install pyjwt
+```
+
+```python
+import jwt
+from datetime import timedelta, datetime
+
+from app.core.config import Config
+
+def create_access_token(user_data: dict, expiry: timedelta):
+	payload = {}
+	token = jwt.encode(
+		payload=payload,
+		key=Config.JWT_SECRET,
+		algoraConfig.ALGORITHM
+	)
+
+def 
+```
 
 
 
