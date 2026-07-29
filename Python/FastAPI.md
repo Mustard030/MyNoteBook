@@ -2539,7 +2539,7 @@ c_app = Celery()
 c_app.config_from_object("src.config")
 
 @c_app.task()
-def send_email():
+def send_email(recipients: List[str], subject: str, body:str):
 	message = "Some message"
 
 ```
