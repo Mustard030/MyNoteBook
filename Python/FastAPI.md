@@ -2622,7 +2622,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: int, token: str):
 
 ## 测试 (Testing)
 ```
-pip install pytest
+pip install pytest schemathesis
 ```
 
 创建`app/tests/`目录，并创建`conftest.py`
@@ -2683,6 +2683,11 @@ def test_user_creation(fake_session, fake_user_service, test_client):
 	assert fake_user_service.user_exists_called_once_with(signup_data["email"], fake_session)
 	assert fake_user_service.create_user_called_once()
 	assert fake_user_service.create_user_called_once_with(user_data, fake_session)
+```
+
+使用schemathesis根据OpenAPI规范自动生成测试
+```bash
+schemathesis run <你的openapi.json地址> --experimental=openapi-3.1
 ```
 
 
