@@ -2556,7 +2556,10 @@ async def background_task():
 	return JSONResponse
 ```
 
-
+假如这个Celery服务运行在别的服务器上，且配置了同一个broker_url，result_backend
+```bash
+celery -A 
+```
 
 ## WebSockets
 WebSockets主要涉及三个类：
