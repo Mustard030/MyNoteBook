@@ -250,14 +250,14 @@
     "expandedKeys": []
   },
   "Python/FastAPI.md": {
-    "scroll": 2532.7224689165187,
+    "scroll": 2065.799862919808,
     "cursor": {
       "from": {
-        "line": 2565,
+        "line": 2078,
         "ch": 0
       },
       "to": {
-        "line": 2565,
+        "line": 2078,
         "ch": 0
       }
     },
@@ -271,11 +271,9 @@
       "item-3-43",
       "item-2-42",
       "item-2-48",
-      "item-1-61",
+      "item-2-88",
       "item-1-71",
-      "item-1-86",
-      "item-2-87",
-      "item-2-82"
+      "item-2-74"
     ]
   },
   "数据库/PostgreSQL.md": {
