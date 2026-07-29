@@ -107,3 +107,8 @@ celery multi stop w1 -A celery_tasks -l info
 # 使用命令向broker中添加任务
 celery -A celery_tasks beat 
 ```
+
+可以通过一个Web页面来可视化查看任务状态
+```
+pip install flower
+```
