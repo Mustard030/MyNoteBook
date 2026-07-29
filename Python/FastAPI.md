@@ -1207,6 +1207,14 @@ def create_exception_handler(status_code: int, initial_detail: Any) -> Callable[
 	return exception_handler
 ```
 
+并注册这个异常处理函数
+```python
+app.add_exception_handler(
+	XXXException,
+	create_exception_handler(400, "Some")
+)
+```
+
 
 # 依赖注入与生命周期管理 (Dependency Injection & Lifespan)
 
