@@ -2521,7 +2521,7 @@ async def background_task(
 
 ### Celery
 ```
-pip install celery asgire
+pip install celery asgiref
 ```
 
 在配置中添加
@@ -2531,6 +2531,7 @@ result_backend = Config.REDIS_URL
 ```
 
 创建`celery_tasks.py`
+由于celery中不支持使用异步函数，因此需要asgiref来对已有的异步函数进行包装，使其成为同步函数
 ```python
 from celery import Celery
 
