@@ -511,7 +511,7 @@ async def read_me():
 ```
 
 **用法二：在 `include_router` 时指定**
-这种方式适合**“外部控制”**。 比如 `users.py` 模块本身不想关心权限，但是 `main.py` 想在挂载它的时候，给它加一道“防火墙”。
+这种方式适合 **“外部控制”** 。 比如 `users.py` 模块本身不想关心权限，但是 `main.py` 想在挂载它的时候，给它加一道“防火墙”。
 ```python
 # users.py (模块里很干净，没有任何权限依赖)
 router = APIRouter()
