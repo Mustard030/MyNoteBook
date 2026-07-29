@@ -2552,8 +2552,7 @@ from celery_tasks import send_email
 
 @app.post("/bgtask", status_code=status.HTTP_201_CREATED)
 async def background_task():
-	send_email.delay(recipients, )
-	
+	send_email.delay(recipients, subject, body)
 	return JSONResponse
 ```
 
