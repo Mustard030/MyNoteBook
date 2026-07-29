@@ -1783,14 +1783,19 @@ pip install pyjwt
 
 ```python
 import jwt
+import uuid
 from datetime import timedelta, datetime
 
 from app.core.config import Config
 
-def create_access_token(user_data: dict, expiry: timedelta = timedelta(seconds=)):
+def create_access_token(
+	user_data: dict,
+	expiry: timedelta = timedelta(hours=1)
+):
 	payload = {}
 	
 	payload["exp"] = datetime.now() + expiry
+	payload["jti"] = str(uuid.uuid4())
 	
 	token = jwt.encode(
 		payload=payload,
