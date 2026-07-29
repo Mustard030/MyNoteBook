@@ -2631,7 +2631,9 @@ pip install pytest
 # conftest.py
 
 from src.db.main import get_session
+from src.auth.dependencies import AccessTokenBearer, RoleChecker, RefreshTokenBearer
 from src import app
+from fastapi.testclient import TestClient
 from unittest.mock import Mock
 import pytest
 
@@ -2641,7 +2643,14 @@ mock_user_service = Mock()
 def get_mock_session():
 	yeild mock_session
 	
+access_token_session = AccessTokenBearer()
+refresh_token_session = RefreshTokenBearer()
+role_checker = RoleChecker()
+	
 app.dependency_overrides[get_session] = get_mock_session	
+app.dependency_overrides[role_checker] = Mock()	
+app.dependency_overrides[access_token_session] = Mock()	
+app.dependency_overrides[refresh_token_session] = Mock()	
 
 @pytest.fixture
 def fake_session():
@@ -2650,7 +2659,32 @@ def fake_session():
 @pytest.fixture
 def fake_user_service():
 	return mock_user_service
+	
+@pytest.fixture	
+def test_client():
+	return TestClient(app)
 ```
+
+然后根据模块创建test文件，如`test_auth.py`
+```
+from src.auth.schemas import UserCreateModel
+
+
+def test_user_creation(fake_session, fake_user_service, test_client):
+	signup_data = {...}
+	response = test_client.post(
+		url=f"/api/v1/auth/signup",
+		json=signup_data,
+	)
+	
+	user_data = UserCreateModel(**signup_data)
+	
+	assert fake_user_service.user_exists_called_once()
+	assert fake_user_service.user_exists_called_once_with(signup_data["email"], fake_session)
+	assert fake_user_service.create_user_called_once()
+	assert fake_user_service.create_user_called_once_with(user_data, fake_session)
+```
+
 
 ## 部署 (Deployment)
 
