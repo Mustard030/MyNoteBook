@@ -1790,12 +1790,14 @@ from app.core.config import Config
 
 def create_access_token(
 	user_data: dict,
-	expiry: timedelta = timedelta(hours=1)
+	expiry: timedelta = timedelta(hours=1),
+	refresh: bool = False,
 ):
 	payload = {}
 	
 	payload["exp"] = datetime.now() + expiry
 	payload["jti"] = str(uuid.uuid4())
+	payload["refresh"] = refresh
 	
 	token = jwt.encode(
 		payload=payload,
@@ -1804,7 +1806,7 @@ def create_access_token(
 	)
 	return token
 
-def 
+def decode_token(token: str)
 ```
 
 
