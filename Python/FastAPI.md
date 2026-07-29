@@ -2528,6 +2528,7 @@ pip install celery asgiref
 ```python
 broker_url = Config.REDIS_URL
 result_backend = Config.REDIS_URL
+broker_connection_retry_on_startup = True
 ```
 
 创建`celery_tasks.py`
@@ -2537,7 +2538,7 @@ from celery import Celery
 from asgiref.sync import async_to_sync
 
 c_app = Celery()
-c_app.config_from_object("src.config")
+c_app.config_from_object("src.config")  #Celery会在这个文件中找它需要的配置项
 
 @c_app.task()
 def send_email(recipients: List[str], subject: str, body:str):

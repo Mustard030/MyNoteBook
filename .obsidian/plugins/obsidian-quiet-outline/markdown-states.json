@@ -250,15 +250,15 @@
     "expandedKeys": []
   },
   "Python/FastAPI.md": {
-    "scroll": 2522.1724137931033,
+    "scroll": 2532.7224689165187,
     "cursor": {
       "from": {
-        "line": 2562,
-        "ch": 32
+        "line": 2565,
+        "ch": 0
       },
       "to": {
-        "line": 2562,
-        "ch": 32
+        "line": 2565,
+        "ch": 0
       }
     },
     "expandedKeys": [
@@ -313,7 +313,7 @@
     "expandedKeys": []
   },
   "Python/Celery.md": {
-    "scroll": 74.10075394105552,
+    "scroll": 54.41563055062167,
     "cursor": {
       "from": {
         "line": 0,
