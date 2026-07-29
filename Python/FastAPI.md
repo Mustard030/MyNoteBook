@@ -1198,6 +1198,15 @@ class AppBaseException(Exception):
 	pass
 ```
 
+创建异常处理函数
+```python
+def create_exception_handler(status_code: int, initial_detail: Any) -> Callable[[Request, AppBaseException], JSONResponse]:
+	async def exception_handler(request: Request, exc: AppBaseException) -> JSONResponse:
+		return JSONResponse(content=initial_detail, status_code=status_code)
+		
+	return exception_handler
+```
+
 
 # 依赖注入与生命周期管理 (Dependency Injection & Lifespan)
 
