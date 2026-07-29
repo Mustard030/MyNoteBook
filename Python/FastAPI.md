@@ -1787,7 +1787,7 @@ from datetime import timedelta, datetime
 
 from app.core.config import Config
 
-def create_access_token(user_data: dict, expiry: timedelta):
+def create_access_token(user_data: dict, expiry: timedelta = timedelta(seconds=)):
 	payload = {}
 	
 	payload["exp"] = datetime.now() + expiry
