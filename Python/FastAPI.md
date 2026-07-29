@@ -2557,8 +2557,10 @@ async def background_task():
 ```
 
 假如这个Celery服务运行在别的服务器上，且配置了同一个broker_url，result_backend
+这个服务器上的目录需要与fastapi服务的代码目录相同，例如：fastapi上的`send_email`位于`app/celery_tasks.py`，则Celery的目录也必须是`app/celery_tasks.py`
+且由于Celery实例的名称为`c_app`，则需要指定为
 ```bash
-celery -A 
+celery -A app.celery_tasks.c_app worker -l info
 ```
 
 ## WebSockets
