@@ -2534,15 +2534,15 @@ result_backend = Config.REDIS_URL
 由于celery中不支持使用异步函数，因此需要asgiref来对已有的异步函数进行包装，使其成为同步函数
 ```python
 from celery import Celery
-from asgiref impo
+from asgiref.sync import async_to_sync
 
 c_app = Celery()
 c_app.config_from_object("src.config")
 
 @c_app.task()
 def send_email(recipients: List[str], subject: str, body:str):
-	message = "Some message"
-
+	message = create_
+	async_to_sync(mail.send_email)(message)  # 这里的send_email是一个异步函数
 ```
 
 
