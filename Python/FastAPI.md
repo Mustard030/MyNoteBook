@@ -2545,7 +2545,17 @@ def send_email(recipients: List[str], subject: str, body:str):
 	async_to_sync(mail.send_email)(message)  # 这里的send_email是一个异步函数
 ```
 
-这里已经成功将一个函数注册成一个celery任务，
+这里已经成功将一个函数注册成一个celery任务，接下来是调用它
+
+```python
+from celery_tasks import send_email
+
+@app.post("/bgtask", status_code=status.HTTP_201_CREATED)
+async def background_task():
+	send_email.delay(recipients, )
+	
+	return JSONResponse
+```
 
 
 
