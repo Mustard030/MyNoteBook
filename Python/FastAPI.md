@@ -1777,7 +1777,29 @@ def create_hero(hero: Hero):  # 这里 hero 既做验证，又直接存库
 pip install aioredis
 ```
 
+```python
+import aioredis
+from app.config.base import Config
 
+TOKEN_EXPIRY = 3600
+
+token_blocklist = aioredis.StrictRedis(
+	host=Config.REDIS_HOST,
+	port=Config.REDIS_PORT,
+	db=0,
+)
+
+async def add_jti_to_blocklist(jti: str) -> None:
+	await token_blocklist.set(
+		name=jti,
+		value="",
+		exp=TOKEN_EXPIRY  # 只需要封禁到token有效期过即可
+	)
+	
+async def token_in_blocklist(jti: str) -> bool:
+	jti = await token_blocklist.get(jti)
+	return jti is not None
+```
 
 
 
