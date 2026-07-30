@@ -2687,7 +2687,7 @@ def test_user_creation(fake_session, fake_user_service, test_client):
 
 使用schemathesis根据OpenAPI规范自动生成测试
 ```bash
-schemathesis run <你的openapi.json地址> --experimental=openapi-3.1
+schemathesis run <你的openapi.json地址> --experimental=openapi-3.1 --checks all
 ```
 
 
