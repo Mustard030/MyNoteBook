@@ -323,5 +323,19 @@
       }
     },
     "expandedKeys": []
+  },
+  "Python/SimpleJwt.md": {
+    "scroll": 7.024422735346358,
+    "cursor": {
+      "from": {
+        "line": 0,
+        "ch": 0
+      },
+      "to": {
+        "line": 0,
+        "ch": 0
+      }
+    },
+    "expandedKeys": []
   }
 }
